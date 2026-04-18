@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Counsel of Echoes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Council of Echoes</p>
+          <h1>Structured disagreement, rendered as a live chamber.</h1>
+          <p class="lede">
+            This MVP runs a controlled council loop: parallel proposals, one critique pass, one synthesis verdict,
+            and a streaming UI that makes the reasoning visible without letting the system collapse into transcript soup.
+          </p>
+        </div>
+        <div class="status-card">
+          <span class="status-dot"></span>
+          <div>
+            <p class="status-label">Runtime</p>
+            <strong id="runtime-mode">Loading...</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="grid">
+        <section class="panel input-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Summon The Council</p>
+              <h2>Ask the chamber a question</h2>
+            </div>
+          </div>
+          <form id="run-form">
+            <label>
+              Question
+              <textarea id="question" name="question" rows="5" placeholder="How should Council of Echoes prove that multi-model deliberation beats a single strong model?"></textarea>
+            </label>
+            <label>
+              Context
+              <textarea id="context" name="context" rows="6" placeholder="Optional context, constraints, or product goals."></textarea>
+            </label>
+            <div class="form-row">
+              <label>
+                Mode
+                <select id="mode" name="mode">
+                  <option value="mock">Mock</option>
+                  <option value="live">Live</option>
+                </select>
+              </label>
+              <button type="submit" id="submit-button">Start Council Run</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel verdict-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Council Verdict</p>
+              <h2 id="verdict-title">Awaiting a run</h2>
+            </div>
+          </div>
+          <div id="verdict-body" class="verdict-body">
+            <p>The final synthesis will appear here once the chamber resolves its first pass.</p>
+          </div>
+          <div id="verdict-meta" class="verdict-meta"></div>
+        </section>
+
+        <section class="panel chamber-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Round Table</p>
+              <h2>Proposal seats</h2>
+            </div>
+          </div>
+          <div id="agents" class="agents"></div>
+        </section>
+
+        <section class="panel event-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Event Stream</p>
+              <h2>State machine trace</h2>
+            </div>
+          </div>
+          <div id="events" class="events"></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
