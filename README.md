@@ -17,6 +17,7 @@ The project ships with a mock runtime so it works immediately, plus optional liv
 - TypeScript backend with Express and WebSocket streaming
 - Typed proposal, critique, synthesis, and event schemas with Zod
 - Local run persistence under `data/runs/`
+- Evaluation harness with persisted council-vs-baseline comparisons under `data/evals/`
 - Mock providers for GPT, Claude, Grok, and optional Voxis
 - Live provider hooks for OpenAI, Anthropic, and xAI
 - Round-table frontend with proposal seats, event trace, and verdict panel
@@ -70,11 +71,35 @@ That keeps the theatrical interface from contaminating the factual reasoning pat
 npm run dev
 npm run build
 npm run start
+npm run eval:mock
+```
+
+## Evaluation Harness
+
+The repo can now score the council against a single-agent baseline.
+
+What it does:
+
+- Runs a default suite of prompts designed for ambiguity, tradeoffs, and disagreement
+- Executes the full council loop for each case
+- Executes a single-agent baseline using `COE_BASELINE_AGENT` or `gpt` by default
+- Scores both outputs across structure, actionability, calibration, conflict resolution, and prompt-signal coverage
+- Persists a full result bundle under `data/evals/`
+
+Run it locally:
+
+```bash
+npm run eval:mock
+```
+
+Or through the API:
+
+```bash
+curl -X POST http://localhost:3000/api/evals -H 'Content-Type: application/json' -d '{"mode":"mock"}'
 ```
 
 ## Next Steps
 
 - Replace heuristic synthesis with a dedicated judge/synthesizer model
 - Add replayable run history in the frontend
-- Add evaluation harnesses against single-model baselines
 - Add persona render variants that preserve the canonical claim set

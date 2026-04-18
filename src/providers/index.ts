@@ -1,4 +1,5 @@
 import { getEnabledAgentIds } from "../core/agents.js";
+import type { AgentId } from "../core/agents.js";
 import type { CouncilProvider, ProviderMode } from "./types.js";
 import { LiveProvider } from "./liveProvider.js";
 import { MockProvider } from "./mockProvider.js";
@@ -13,6 +14,7 @@ export type RuntimeConfig = {
   anthropicModel: string;
   xAiKey?: string;
   xAiModel: string;
+  baselineAgent: AgentId;
 };
 
 export function readRuntimeConfig(): RuntimeConfig {
@@ -25,7 +27,8 @@ export function readRuntimeConfig(): RuntimeConfig {
     anthropicKey: process.env.ANTHROPIC_API_KEY,
     anthropicModel: process.env.ANTHROPIC_MODEL ?? "claude-3-7-sonnet-latest",
     xAiKey: process.env.XAI_API_KEY,
-    xAiModel: process.env.XAI_MODEL ?? "grok-3-mini"
+    xAiModel: process.env.XAI_MODEL ?? "grok-3-mini",
+    baselineAgent: readBaselineAgent(process.env.COE_BASELINE_AGENT)
   };
 }
 
@@ -73,4 +76,24 @@ export function createProviders(config: RuntimeConfig, modeOverride?: ProviderMo
   }
 
   return enabledAgents.map((agentId) => new MockProvider(agentId));
+}
+
+export function createProviderForAgent(
+  config: RuntimeConfig,
+  agentId: AgentId,
+  modeOverride?: ProviderMode
+): CouncilProvider {
+  const providers = createProviders(config, modeOverride);
+  return providers.find((provider) => provider.agentId === agentId) ?? providers[0];
+}
+
+function readBaselineAgent(value: string | undefined): AgentId {
+  switch (value) {
+    case "claude":
+    case "grok":
+    case "voxis":
+      return value;
+    default:
+      return "gpt";
+  }
 }

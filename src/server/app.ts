@@ -4,14 +4,17 @@ import { RunStore } from "../store/runStore.js";
 import { CouncilService } from "../core/council.js";
 import type { RuntimeConfig } from "../providers/index.js";
 import { agentProfiles } from "../core/agents.js";
+import { EvalStore } from "../evals/store.js";
+import { EvalService } from "../evals/service.js";
 
 type AppDependencies = {
   council: CouncilService;
   store: RunStore;
   config: RuntimeConfig;
+  evals: EvalService;
 };
 
-export function createApp({ council, store, config }: AppDependencies) {
+export function createApp({ council, store, config, evals }: AppDependencies) {
   const app = express();
   const publicDir = path.resolve(process.cwd(), "public");
 
@@ -52,6 +55,36 @@ export function createApp({ council, store, config }: AppDependencies) {
         message: error instanceof Error ? error.message : "Invalid run request"
       });
     }
+  });
+
+  app.post("/api/evals", async (request, response) => {
+    try {
+      const result = await evals.runSuite({
+        mode: request.body?.mode === "live" ? "live" : request.body?.mode === "mock" ? "mock" : undefined
+      });
+      response.status(201).json(result);
+    } catch (error) {
+      response.status(400).json({
+        message: error instanceof Error ? error.message : "Evaluation run failed"
+      });
+    }
+  });
+
+  app.get("/api/evals", async (_request, response) => {
+    response.json({
+      evals: await evals.listSuites()
+    });
+  });
+
+  app.get("/api/evals/:evalId", async (request, response) => {
+    const result = await evals.getSuite(request.params.evalId);
+
+    if (!result) {
+      response.status(404).json({ message: "Evaluation run not found" });
+      return;
+    }
+
+    response.json(result);
   });
 
   app.get("*", (_request, response) => {

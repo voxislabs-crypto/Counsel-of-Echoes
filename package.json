@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "eval": "tsx src/evals/cli.ts",
+    "eval:mock": "tsx src/evals/cli.ts --mode mock"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

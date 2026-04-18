@@ -6,6 +6,7 @@ import {
   type Critique,
   type Proposal,
   type RunRequest,
+  type RunRecord,
   type Synthesis
 } from "./schemas.js";
 import type { CouncilProvider, ProviderMode } from "../providers/types.js";
@@ -41,6 +42,27 @@ export class CouncilService {
       mode,
       agents: providers.map((provider) => provider.agentId)
     };
+  }
+
+  async runAndWait(input: unknown): Promise<RunRecord> {
+    const request = runRequestSchema.parse(input);
+    const providers = createProviders(this.config, request.mode);
+    const mode = providers.every((provider) => provider.mode === "mock") ? "mock" : "live";
+    const record = this.store.createRun({ ...request, mode });
+
+    await this.store.appendEvent(record.runId, {
+      runId: record.runId,
+      type: "run.started",
+      payload: {
+        question: request.question,
+        context: request.context,
+        requestedMode: request.mode ?? this.config.providerMode
+      }
+    });
+
+    await this.execute(record.runId, request, providers, mode);
+
+    return this.store.getRun(record.runId) ?? record;
   }
 
   private async execute(
