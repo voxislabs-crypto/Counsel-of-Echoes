@@ -35,7 +35,18 @@ export const critiqueSchema = z.object({
 export const supportingClaimSchema = z.object({
   statement: z.string().min(1),
   sourceAgents: z.array(agentIdSchema).min(1),
+  supportCount: z.number().int().nonnegative(),
+  challengeCount: z.number().int().nonnegative(),
   confidence: z.number().min(0).max(1)
+});
+
+export const resolutionTraceItemSchema = z.object({
+  statement: z.string().min(1),
+  disposition: z.enum(["accepted", "monitor", "rejected"]),
+  sourceAgents: z.array(agentIdSchema).min(1),
+  challengedBy: z.array(agentIdSchema),
+  score: z.number().min(0).max(1),
+  rationale: z.string().min(1)
 });
 
 export const synthesisSchema = z.object({
@@ -44,7 +55,8 @@ export const synthesisSchema = z.object({
   disagreements: z.array(z.string().min(1)).max(6),
   uncertainties: z.array(z.string().min(1)).max(6),
   confidenceBand: z.enum(["low", "medium", "high"]),
-  nextActions: z.array(z.string().min(1)).min(1).max(5)
+  nextActions: z.array(z.string().min(1)).min(1).max(5),
+  resolutionTrace: z.array(resolutionTraceItemSchema).min(1).max(12)
 });
 
 export const runRequestSchema = z.object({
@@ -83,6 +95,7 @@ export type Claim = z.infer<typeof claimSchema>;
 export type Proposal = z.infer<typeof proposalSchema>;
 export type Critique = z.infer<typeof critiqueSchema>;
 export type Synthesis = z.infer<typeof synthesisSchema>;
+export type ResolutionTraceItem = z.infer<typeof resolutionTraceItemSchema>;
 export type RunRequest = z.infer<typeof runRequestSchema>;
 export type CouncilEvent = z.infer<typeof councilEventSchema>;
 export type RunStatus = z.infer<typeof runStatusSchema>;

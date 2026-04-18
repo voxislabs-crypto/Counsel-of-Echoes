@@ -18,6 +18,7 @@ The project ships with a mock runtime so it works immediately, plus optional liv
 - Typed proposal, critique, synthesis, and event schemas with Zod
 - Local run persistence under `data/runs/`
 - Evaluation harness with persisted council-vs-baseline comparisons under `data/evals/`
+- Critique-weighted synthesis with explicit claim resolution traces
 - Mock providers for GPT, Claude, Grok, and optional Voxis
 - Live provider hooks for OpenAI, Anthropic, and xAI
 - Round-table frontend with proposal seats, event trace, and verdict panel
@@ -64,6 +65,13 @@ Important separation:
 - Presentation layer: streaming UI, seat styling, dramatic framing
 
 That keeps the theatrical interface from contaminating the factual reasoning path.
+
+The synthesis pass is no longer a simple top-claim merge. It now:
+
+- scores each claim against critique pressure
+- classifies claims as `accepted`, `monitor`, or `rejected`
+- lowers confidence when disagreement survives resolution
+- emits a machine-readable `resolutionTrace` for evaluation and debugging
 
 ## Scripts
 

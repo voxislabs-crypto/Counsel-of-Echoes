@@ -7,7 +7,7 @@ export function scoreCouncil(caseInput: EvalCase, synthesis: Synthesis): EvalSco
   const signals = caseInput.requiredSignals.filter((signal) => finalAnswer.includes(signal.toLowerCase()));
 
   const structure = clampScore(
-    synthesis.supportingClaims.length >= 3 ? 5 : synthesis.supportingClaims.length + 1,
+    synthesis.supportingClaims.length >= 3 && synthesis.resolutionTrace.length >= 3 ? 5 : synthesis.supportingClaims.length + Math.min(2, synthesis.resolutionTrace.length),
     notes,
     "Council structure is thin; it needs more supporting claims."
   );
@@ -20,7 +20,13 @@ export function scoreCouncil(caseInput: EvalCase, synthesis: Synthesis): EvalSco
 
   const disagreementWeight = caseInput.tags.some((tag) => ["conflict", "ambiguity", "uncertainty", "tradeoff"].includes(tag)) ? 1 : 0;
   const conflictResolution = clampScore(
-    Math.min(5, synthesis.disagreements.length + synthesis.uncertainties.length + disagreementWeight),
+    Math.min(
+      5,
+      synthesis.disagreements.length +
+        synthesis.uncertainties.length +
+        disagreementWeight +
+        synthesis.resolutionTrace.filter((item) => item.disposition !== "accepted").length
+    ),
     notes,
     "Council is not surfacing enough disagreement for this prompt class."
   );
@@ -29,6 +35,7 @@ export function scoreCouncil(caseInput: EvalCase, synthesis: Synthesis): EvalSco
     synthesis.confidenceBand,
     synthesis.disagreements.length,
     synthesis.uncertainties.length,
+    synthesis.resolutionTrace.filter((item) => item.disposition === "accepted").length,
     notes,
     "Council confidence does not seem aligned with visible disagreement."
   );
@@ -122,16 +129,17 @@ function scoreCalibration(
   confidenceBand: Synthesis["confidenceBand"],
   disagreements: number,
   uncertainties: number,
+  acceptedClaims: number,
   notes: string[],
   note: string
 ): number {
-  if (confidenceBand === "low" && disagreements + uncertainties >= 2) {
+  if (confidenceBand === "low" && (disagreements + uncertainties >= 2 || acceptedClaims <= 1)) {
     return 5;
   }
-  if (confidenceBand === "medium" && disagreements + uncertainties >= 1) {
-    return 4;
+  if (confidenceBand === "medium" && acceptedClaims >= 2 && disagreements + uncertainties >= 1) {
+    return 5;
   }
-  if (confidenceBand === "high" && disagreements === 0 && uncertainties <= 1) {
+  if (confidenceBand === "high" && acceptedClaims >= 3 && disagreements === 0 && uncertainties <= 1) {
     return 4;
   }
   notes.push(note);
