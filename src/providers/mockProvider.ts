@@ -1,6 +1,7 @@
 import { agentProfiles, type AgentId } from "../core/agents.js";
-import { critiqueSchema, proposalSchema, type Critique, type Proposal } from "../core/schemas.js";
-import type { CouncilProvider, CritiqueInput, ProposalInput } from "./types.js";
+import { critiqueSchema, proposalSchema, type Critique, type Proposal, type Synthesis } from "../core/schemas.js";
+import { buildHeuristicJudgeSynthesis } from "../core/judge.js";
+import type { CouncilProvider, CritiqueInput, ProposalInput, SynthesisInput } from "./types.js";
 
 const stanceTemplates: Record<AgentId, string> = {
   gpt: "Turn the question into a sequence of decisions with clear tradeoffs.",
@@ -52,6 +53,10 @@ export class MockProvider implements CouncilProvider {
     };
 
     return critiqueSchema.parse(critique);
+  }
+
+  async synthesize(input: SynthesisInput): Promise<Synthesis> {
+    return buildHeuristicJudgeSynthesis(input.question, input.proposals, input.critiques, input.resolutionTrace);
   }
 }
 

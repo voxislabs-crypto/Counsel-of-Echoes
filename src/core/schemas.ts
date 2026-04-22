@@ -49,6 +49,33 @@ export const resolutionTraceItemSchema = z.object({
   rationale: z.string().min(1)
 });
 
+export const deliberationViewpointSchema = z.object({
+  agentId: agentIdSchema,
+  perspective: z.string().min(1),
+  primaryClaim: z.string().min(1),
+  disposition: z.enum(["accepted", "monitor", "rejected"])
+});
+
+export const deliberationVoteItemSchema = z.object({
+  agentId: agentIdSchema,
+  ballot: z.enum(["accepted", "monitor", "rejected"]),
+  reason: z.string().min(1)
+});
+
+export const deliberationSummarySchema = z.object({
+  agreementState: z.enum(["full-agreement", "disagreement"]),
+  viewpoints: z.array(deliberationViewpointSchema).min(2).max(4),
+  voteRequired: z.boolean(),
+  votes: z.array(deliberationVoteItemSchema).min(2).max(4),
+  winningDisposition: z.enum(["accepted", "monitor", "rejected"]),
+  consensusSummary: z.string().min(1)
+});
+
+export const decisionRationaleSchema = z.object({
+  summary: z.string().min(1),
+  keyFactors: z.array(z.string().min(1)).min(2).max(4)
+});
+
 export const synthesisSchema = z.object({
   finalAnswer: z.string().min(1),
   supportingClaims: z.array(supportingClaimSchema).min(1).max(6),
@@ -56,7 +83,9 @@ export const synthesisSchema = z.object({
   uncertainties: z.array(z.string().min(1)).max(6),
   confidenceBand: z.enum(["low", "medium", "high"]),
   nextActions: z.array(z.string().min(1)).min(1).max(5),
-  resolutionTrace: z.array(resolutionTraceItemSchema).min(1).max(12)
+  resolutionTrace: z.array(resolutionTraceItemSchema).min(1).max(12),
+  deliberation: deliberationSummarySchema,
+  decisionRationale: decisionRationaleSchema
 });
 
 export const runRequestSchema = z.object({
@@ -96,6 +125,10 @@ export type Proposal = z.infer<typeof proposalSchema>;
 export type Critique = z.infer<typeof critiqueSchema>;
 export type Synthesis = z.infer<typeof synthesisSchema>;
 export type ResolutionTraceItem = z.infer<typeof resolutionTraceItemSchema>;
+export type DeliberationSummary = z.infer<typeof deliberationSummarySchema>;
+export type DeliberationViewpoint = z.infer<typeof deliberationViewpointSchema>;
+export type DeliberationVoteItem = z.infer<typeof deliberationVoteItemSchema>;
+export type DecisionRationale = z.infer<typeof decisionRationaleSchema>;
 export type RunRequest = z.infer<typeof runRequestSchema>;
 export type CouncilEvent = z.infer<typeof councilEventSchema>;
 export type RunStatus = z.infer<typeof runStatusSchema>;

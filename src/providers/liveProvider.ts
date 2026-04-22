@@ -1,6 +1,6 @@
 import { agentProfiles, type AgentId } from "../core/agents.js";
-import { critiqueSchema, proposalSchema, type Critique, type Proposal } from "../core/schemas.js";
-import type { CouncilProvider, CritiqueInput, ProposalInput } from "./types.js";
+import { critiqueSchema, proposalSchema, synthesisSchema, type Critique, type Proposal, type Synthesis } from "../core/schemas.js";
+import type { CouncilProvider, CritiqueInput, ProposalInput, SynthesisInput } from "./types.js";
 
 type LiveProviderKind = "openai" | "anthropic" | "xai";
 
@@ -103,6 +103,88 @@ export class LiveProvider implements CouncilProvider {
       agentId: this.agentId,
       targetAgentId: input.target.agentId
     });
+  }
+
+  async synthesize(input: SynthesisInput): Promise<Synthesis> {
+    const system = [
+      "You are the synthesis judge for the Council of Echoes.",
+      "You receive typed proposals, critiques, and a precomputed resolution trace.",
+      "Return JSON only.",
+      "Do not wrap JSON in markdown.",
+      "Respect this contract: each claim disposition must remain accepted, monitor, or rejected.",
+      "Always include individual viewpoints before the final decision.",
+      "If viewpoints disagree, trigger a majority decision using a 2-of-3 rule (or majority of active seats).",
+      "If all viewpoints agree, mark full-agreement and voteRequired=false.",
+      "The finalAnswer must be a 4-line block in this exact order with these labels:",
+      "Viewpoints:",
+      "Agreement Check:",
+      "Vote:",
+      "Final Decision:",
+      "Follow this shape exactly:",
+      JSON.stringify({
+        finalAnswer: "Viewpoints: ...\\nAgreement Check: ...\\nVote: ...\\nFinal Decision: ...",
+        supportingClaims: [
+          {
+            statement: "string",
+            sourceAgents: ["gpt"],
+            supportCount: 1,
+            challengeCount: 0,
+            confidence: 0.75
+          }
+        ],
+        disagreements: ["string"],
+        uncertainties: ["string"],
+        confidenceBand: "medium",
+        nextActions: ["string"],
+        resolutionTrace: [
+          {
+            statement: "string",
+            disposition: "accepted",
+            sourceAgents: ["gpt"],
+            challengedBy: ["claude"],
+            score: 0.71,
+            rationale: "string"
+          }
+        ],
+        deliberation: {
+          agreementState: "disagreement",
+          viewpoints: [
+            {
+              agentId: "gpt",
+              perspective: "string",
+              primaryClaim: "string",
+              disposition: "accepted"
+            }
+          ],
+          voteRequired: true,
+          votes: [
+            {
+              agentId: "gpt",
+              ballot: "accepted",
+              reason: "string"
+            }
+          ],
+          winningDisposition: "accepted",
+          consensusSummary: "string"
+        },
+        decisionRationale: {
+          summary: "string",
+          keyFactors: ["string", "string"]
+        }
+      })
+    ].join("\n");
+
+    const user = [
+      `Question: ${input.question}`,
+      input.context ? `Context: ${input.context}` : "Context: none provided",
+      `Proposals: ${JSON.stringify(input.proposals)}`,
+      `Critiques: ${JSON.stringify(input.critiques)}`,
+      `Current resolutionTrace: ${JSON.stringify(input.resolutionTrace)}`,
+      "Build a concise but explicit synthesis with viewpoints, agreement check, vote rule, final decision, and decision rationale."
+    ].join("\n");
+
+    const raw = await this.requestJson(system, user);
+    return synthesisSchema.parse(raw);
   }
 
   private async requestJson(system: string, user: string): Promise<Record<string, unknown>> {

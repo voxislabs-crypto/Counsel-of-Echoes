@@ -3,11 +3,13 @@ import type { BaselineResult, EvalCase, EvalScore } from "./schemas.js";
 
 export function scoreCouncil(caseInput: EvalCase, synthesis: Synthesis): EvalScore {
   const notes: string[] = [];
-  const finalAnswer = synthesis.finalAnswer.toLowerCase();
-  const signals = caseInput.requiredSignals.filter((signal) => finalAnswer.includes(signal.toLowerCase()));
+  const synthesisText = `${synthesis.finalAnswer} ${synthesis.decisionRationale.summary} ${synthesis.decisionRationale.keyFactors.join(" ")}`.toLowerCase();
+  const signals = caseInput.requiredSignals.filter((signal) => synthesisText.includes(signal.toLowerCase()));
 
   const structure = clampScore(
-    synthesis.supportingClaims.length >= 3 && synthesis.resolutionTrace.length >= 3 ? 5 : synthesis.supportingClaims.length + Math.min(2, synthesis.resolutionTrace.length),
+    synthesis.supportingClaims.length >= 3 && synthesis.resolutionTrace.length >= 3 && synthesis.decisionRationale.keyFactors.length >= 2
+      ? 5
+      : synthesis.supportingClaims.length + Math.min(2, synthesis.resolutionTrace.length),
     notes,
     "Council structure is thin; it needs more supporting claims."
   );

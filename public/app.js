@@ -173,9 +173,25 @@ function handleEvent(event) {
 }
 
 function renderVerdict(synthesis) {
+  const deliberation = synthesis.deliberation;
+  const decisionRationale = synthesis.decisionRationale;
+  const viewpointsCopy = deliberation
+    ? deliberation.viewpoints
+      .map((viewpoint) => `${viewpoint.agentId.toUpperCase()}: ${viewpoint.primaryClaim}`)
+      .join(" ")
+    : "";
+  const voteCopy = deliberation
+    ? deliberation.voteRequired
+      ? `Vote (${deliberation.votes.length} seats): ${deliberation.votes.map((vote) => `${vote.agentId}:${vote.ballot}`).join(" | ")}. Winner: ${deliberation.winningDisposition}.`
+      : `Agreement reached without escalation vote. Winner: ${deliberation.winningDisposition}.`
+    : "";
+
   verdictTitle.textContent = `Confidence: ${synthesis.confidenceBand.toUpperCase()}`;
   verdictBody.innerHTML = `
-    <p>${synthesis.finalAnswer}</p>
+    <p>${synthesis.finalAnswer.replace(/\n/g, "<br>")}</p>
+    ${deliberation ? `<p><strong>Viewpoints</strong></p><p>${viewpointsCopy}</p>` : ""}
+    ${deliberation ? `<p><strong>Decision rule</strong></p><p>${voteCopy}</p><p>${deliberation.consensusSummary}</p>` : ""}
+    ${decisionRationale ? `<p><strong>Why this decision</strong></p><p>${decisionRationale.summary}</p><p>${decisionRationale.keyFactors.join(" ")}</p>` : ""}
     <p><strong>Next actions</strong></p>
     <p>${synthesis.nextActions.join(" ")}</p>
   `;

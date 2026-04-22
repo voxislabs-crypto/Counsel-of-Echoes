@@ -66,12 +66,13 @@ Important separation:
 
 That keeps the theatrical interface from contaminating the factual reasoning path.
 
-The synthesis pass is no longer a simple top-claim merge. It now:
+The synthesis pass is now judge-driven and vote-aware. It now:
 
-- scores each claim against critique pressure
+- gives each seat an explicit viewpoint before the final decision
+- triggers a majority vote when seats disagree (2-of-3 rule for three seats)
 - classifies claims as `accepted`, `monitor`, or `rejected`
-- lowers confidence when disagreement survives resolution
-- emits a machine-readable `resolutionTrace` for evaluation and debugging
+- emits a machine-readable `resolutionTrace` and deliberation record for evaluation and debugging
+- emits a `decisionRationale` summary with key factors behind the selected direction
 
 ## Scripts
 
@@ -81,6 +82,11 @@ npm run build
 npm run start
 npm run eval:mock
 ```
+
+## Project Hygiene
+
+- Every major behavioral or architecture update should include a matching README update in the same commit.
+- Keep protocol sections current when synthesis contracts, vote logic, or evaluation dimensions change.
 
 ## Evaluation Harness
 
