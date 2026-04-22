@@ -10,7 +10,9 @@
     "eval": "tsx src/evals/cli.ts",
     "eval:mock": "tsx src/evals/cli.ts --mode mock",
     "eval:benchmark": "tsx src/evals/cli.ts --suite benchmark",
-    "eval:benchmark:mock": "tsx src/evals/cli.ts --mode mock --suite benchmark"
+    "eval:benchmark:mock": "tsx src/evals/cli.ts --mode mock --suite benchmark",
+    "eval:benchmark:report": "tsx src/evals/cli.ts --suite benchmark --report",
+    "eval:benchmark:report:mock": "tsx src/evals/cli.ts --mode mock --suite benchmark --report"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

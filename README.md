@@ -82,6 +82,7 @@ npm run build
 npm run start
 npm run eval:mock
 npm run eval:benchmark:mock
+npm run eval:benchmark:report:mock
 ```
 
 ## Project Hygiene
@@ -106,6 +107,8 @@ Benchmark mode:
 
 - Use `npm run eval:benchmark:mock` for a 13-case side-by-side council-vs-baseline benchmark.
 - Use `npm run eval:benchmark` to run the same benchmark in your configured provider mode.
+- Use `npm run eval:benchmark:report:mock` for a compact table report plus full JSON output.
+- Use `--report-only` with `src/evals/cli.ts` to output only the compact report.
 
 Run it locally:
 
