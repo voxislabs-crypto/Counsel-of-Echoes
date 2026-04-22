@@ -28,6 +28,15 @@ export const evalScoreSchema = z.object({
   notes: z.array(z.string().min(1)).max(8)
 });
 
+export const deliberationMetricsSchema = z.object({
+  agreementState: z.enum(["full-agreement", "disagreement"]),
+  voteRequired: z.boolean(),
+  minorityOverruled: z.boolean(),
+  minorityAgents: z.array(agentIdSchema).max(4),
+  minorityCorrectnessProxy: z.enum(["low", "medium", "high"]),
+  minoritySignalScore: z.number().min(0).max(1)
+});
+
 export const evalCaseResultSchema = z.object({
   case: evalCaseSchema,
   mode: z.enum(["mock", "live"]),
@@ -37,6 +46,7 @@ export const evalCaseResultSchema = z.object({
   baseline: baselineResultSchema,
   councilScore: evalScoreSchema,
   baselineScore: evalScoreSchema,
+  deliberationMetrics: deliberationMetricsSchema,
   winner: z.enum(["council", "baseline", "tie"]),
   rationale: z.string().min(1)
 });
@@ -46,6 +56,10 @@ export const evalSuiteSummarySchema = z.object({
   councilWins: z.number().int().nonnegative(),
   baselineWins: z.number().int().nonnegative(),
   ties: z.number().int().nonnegative(),
+  agreementRate: z.number().min(0).max(1),
+  voteRequiredFrequency: z.number().min(0).max(1),
+  minorityOverruledFrequency: z.number().min(0).max(1),
+  minorityCorrectnessProxyRate: z.number().min(0).max(1),
   averageCouncilScore: z.number().min(0).max(25),
   averageBaselineScore: z.number().min(0).max(25)
 });
@@ -62,5 +76,6 @@ export const evalSuiteResultSchema = z.object({
 export type EvalCase = z.infer<typeof evalCaseSchema>;
 export type BaselineResult = z.infer<typeof baselineResultSchema>;
 export type EvalScore = z.infer<typeof evalScoreSchema>;
+export type DeliberationMetrics = z.infer<typeof deliberationMetricsSchema>;
 export type EvalCaseResult = z.infer<typeof evalCaseResultSchema>;
 export type EvalSuiteResult = z.infer<typeof evalSuiteResultSchema>;

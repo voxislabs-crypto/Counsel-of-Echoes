@@ -98,6 +98,7 @@ What it does:
 - Executes the full council loop for each case
 - Executes a single-agent baseline using `COE_BASELINE_AGENT` or `gpt` by default
 - Scores both outputs across structure, actionability, calibration, conflict resolution, and prompt-signal coverage
+- Tracks deliberation protocol metrics including agreement rate, vote-required frequency, minority-overruled frequency, and a minority correctness proxy
 - Persists a full result bundle under `data/evals/`
 
 Run it locally:
