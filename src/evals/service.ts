@@ -2,7 +2,7 @@ import { createProviderForAgent, type RuntimeConfig } from "../providers/index.j
 import type { AgentId } from "../core/agents.js";
 import type { ProviderMode } from "../providers/types.js";
 import { CouncilService } from "../core/council.js";
-import type { Proposal, Synthesis } from "../core/schemas.js";
+import type { Critique, Proposal, Synthesis } from "../core/schemas.js";
 import { EvalStore } from "./store.js";
 import { defaultEvalCases } from "./fixtures.js";
 import {
@@ -43,7 +43,7 @@ export class EvalService {
       const baseline = await this.runBaseline(caseInput, mode);
       const councilScore = scoreCouncil(caseInput, councilRun.synthesis);
       const baselineScore = scoreBaseline(caseInput, baseline);
-      const deliberationMetrics = deriveDeliberationMetrics(councilRun.synthesis);
+      const deliberationMetrics = deriveDeliberationMetrics(councilRun.synthesis, councilRun.critiques);
       const comparison = chooseWinner(councilScore, baselineScore);
 
       results.push(evalCaseResultSchema.parse({
@@ -123,6 +123,9 @@ function buildSummary(results: Array<{ winner: "council" | "baseline" | "tie"; c
   const voteRequiredFrequency = casesRun === 0
     ? 0
     : Number((results.filter((result) => result.deliberationMetrics.voteRequired).length / casesRun).toFixed(3));
+  const challengeAbsentFrequency = casesRun === 0
+    ? 0
+    : Number((results.filter((result) => result.deliberationMetrics.challengeAbsent).length / casesRun).toFixed(3));
   const minorityOverruledFrequency = casesRun === 0
     ? 0
     : Number((results.filter((result) => result.deliberationMetrics.minorityOverruled).length / casesRun).toFixed(3));
@@ -139,6 +142,7 @@ function buildSummary(results: Array<{ winner: "council" | "baseline" | "tie"; c
     ties,
     agreementRate,
     voteRequiredFrequency,
+    challengeAbsentFrequency,
     minorityOverruledFrequency,
     minorityCorrectnessProxyRate,
     averageCouncilScore,
@@ -146,7 +150,7 @@ function buildSummary(results: Array<{ winner: "council" | "baseline" | "tie"; c
   };
 }
 
-function deriveDeliberationMetrics(synthesis: Synthesis): DeliberationMetrics {
+function deriveDeliberationMetrics(synthesis: Synthesis, critiques: Critique[]): DeliberationMetrics {
   const votes = synthesis.deliberation.votes;
   const minorityAgents = votes
     .filter((vote) => vote.ballot !== synthesis.deliberation.winningDisposition)
@@ -162,15 +166,28 @@ function deriveDeliberationMetrics(synthesis: Synthesis): DeliberationMetrics {
       (synthesis.disagreements.length > 0 ? 0.2 : 0) +
       (synthesis.confidenceBand === "high" ? 0.2 : 0)
   );
+  const challengeAbsent = synthesis.deliberation.agreementState === "full-agreement" && !hasMeaningfulChallenge(critiques, synthesis);
 
   return {
     agreementState: synthesis.deliberation.agreementState,
     voteRequired: synthesis.deliberation.voteRequired,
+    challengeAbsent,
     minorityOverruled: minorityAgents.length > 0,
     minorityAgents: uniqAgentIds(minorityAgents),
     minorityCorrectnessProxy: minoritySignalScore >= 0.75 ? "high" : minoritySignalScore >= 0.45 ? "medium" : "low",
     minoritySignalScore
   };
+}
+
+function hasMeaningfulChallenge(critiques: Critique[], synthesis: Synthesis): boolean {
+  const highPressureCritique = critiques.some((critique) => critique.severity === "high" || critique.severity === "medium");
+  const targetedPressure = critiques.some((critique) => critique.challengedClaimIds.length > 0 && critique.severity !== "low");
+  const substantiveConcern = critiques.some((critique) =>
+    critique.concerns.some((concern) => /risk|assumption|uncertain|unknown|tradeoff|failure|edge|bias|cost|latency|safety|security/i.test(concern))
+  );
+  const synthesisSignals = synthesis.disagreements.length > 0 || synthesis.uncertainties.length > 0;
+
+  return highPressureCritique || targetedPressure || substantiveConcern || synthesisSignals;
 }
 
 function uniqAgentIds(values: AgentId[]): AgentId[] {

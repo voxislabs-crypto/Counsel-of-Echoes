@@ -31,6 +31,7 @@ export const evalScoreSchema = z.object({
 export const deliberationMetricsSchema = z.object({
   agreementState: z.enum(["full-agreement", "disagreement"]),
   voteRequired: z.boolean(),
+  challengeAbsent: z.boolean(),
   minorityOverruled: z.boolean(),
   minorityAgents: z.array(agentIdSchema).max(4),
   minorityCorrectnessProxy: z.enum(["low", "medium", "high"]),
@@ -58,6 +59,7 @@ export const evalSuiteSummarySchema = z.object({
   ties: z.number().int().nonnegative(),
   agreementRate: z.number().min(0).max(1),
   voteRequiredFrequency: z.number().min(0).max(1),
+  challengeAbsentFrequency: z.number().min(0).max(1),
   minorityOverruledFrequency: z.number().min(0).max(1),
   minorityCorrectnessProxyRate: z.number().min(0).max(1),
   averageCouncilScore: z.number().min(0).max(25),

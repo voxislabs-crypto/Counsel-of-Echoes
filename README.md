@@ -81,6 +81,7 @@ npm run dev
 npm run build
 npm run start
 npm run eval:mock
+npm run eval:benchmark:mock
 ```
 
 ## Project Hygiene
@@ -98,8 +99,13 @@ What it does:
 - Executes the full council loop for each case
 - Executes a single-agent baseline using `COE_BASELINE_AGENT` or `gpt` by default
 - Scores both outputs across structure, actionability, calibration, conflict resolution, and prompt-signal coverage
-- Tracks deliberation protocol metrics including agreement rate, vote-required frequency, minority-overruled frequency, and a minority correctness proxy
+- Tracks deliberation protocol metrics including agreement rate, vote-required frequency, `challengeAbsent`, minority-overruled frequency, and a minority correctness proxy
 - Persists a full result bundle under `data/evals/`
+
+Benchmark mode:
+
+- Use `npm run eval:benchmark:mock` for a 13-case side-by-side council-vs-baseline benchmark.
+- Use `npm run eval:benchmark` to run the same benchmark in your configured provider mode.
 
 Run it locally:
 
