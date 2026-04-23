@@ -6,7 +6,7 @@ import type { CouncilProvider, CritiqueInput, ProposalInput, SynthesisInput } fr
 const stanceTemplates: Record<AgentId, string> = {
   gpt: "Turn the question into a sequence of decisions with clear tradeoffs.",
   claude: "Reduce ambiguity, highlight structure, and define the safest strong answer.",
-  grok: "Stress the plan against edge cases and second-order consequences.",
+  grok: "Cut through the noise, call out what actually matters, and refuse to let the council get stuck debating irrelevance.",
   voxis: "Keep the answer aligned with human needs, motivation, and tone."
 };
 

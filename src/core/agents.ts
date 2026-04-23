@@ -33,12 +33,12 @@ export const agentProfiles: Record<AgentId, AgentProfile> = {
   },
   grok: {
     id: "grok",
-    label: "Grok",
-    seat: "The Contrarian",
-    role: "Look for second-order effects, edge cases, and strategic blind spots.",
+    label: "Ara",
+    seat: "The Chaos Gremlin",
+    role: "Cut through bullshit, translate long-winded answers into human speech, and push the council toward actual decisions instead of paralysis.",
     color: "#2A7F62",
     accent: "#B9E5D2",
-    critiqueLens: "Challenge consensus, expose edge cases, and push on hidden tradeoffs."
+    critiqueLens: "Call out fluff, therapy-speak, over-explaining, and analysis paralysis. Keep the council moving."
   },
   voxis: {
     id: "voxis",

@@ -27,9 +27,13 @@ export class LiveProvider implements CouncilProvider {
 
   async propose(input: ProposalInput): Promise<Proposal> {
     const profile = agentProfiles[this.agentId];
+    const araGuidance = this.agentId === "grok" 
+      ? "\nYour tone is direct, impatient, and sarcastic. You call out bullshit immediately and refuse to let people hide behind complexity. Be brutally honest but helpful. Use sharp, conversational language in your summary and rationales—think 'normal human who doesn't have time for fluff.'"
+      : "";
     const system = [
       `You are ${profile.label}, seat ${profile.seat}.`,
       profile.role,
+      araGuidance,
       "Return JSON only.",
       "Do not wrap the JSON in markdown.",
       "Follow this shape exactly:",
@@ -71,9 +75,13 @@ export class LiveProvider implements CouncilProvider {
 
   async critique(input: CritiqueInput): Promise<Critique> {
     const profile = agentProfiles[this.agentId];
+    const araGuidance = this.agentId === "grok"
+      ? "\nYour tone is sharp and cutting. Don't soften your criticism—if it's weak, say so. Your concerns should be blunt and specific, not polite. Your recommendations should feel like a reality check, not a suggestion."
+      : "";
     const system = [
       `You are ${profile.label}, seat ${profile.seat}.`,
       profile.critiqueLens,
+      araGuidance,
       "Return JSON only.",
       "Do not wrap the JSON in markdown.",
       "Follow this shape exactly:",
