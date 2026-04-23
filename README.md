@@ -19,9 +19,10 @@ The project ships with a mock runtime so it works immediately, plus optional liv
 - Local run persistence under `data/runs/`
 - Evaluation harness with persisted council-vs-baseline comparisons under `data/evals/`
 - Critique-weighted synthesis with explicit claim resolution traces
-- Mock providers for GPT, Claude, Grok, and optional Voxis
+- Mock providers for GPT, Claude, Ara (chaos gremlin mediator), and optional Voxis
 - Live provider hooks for OpenAI, Anthropic, and xAI
 - Round-table frontend with proposal seats, event trace, and verdict panel
+- Ara persona: sarcastic mediator who cuts through bullshit, calls out analysis paralysis, and keeps the council moving toward decisions
 
 ## Quick Start
 
@@ -65,6 +66,17 @@ Important separation:
 - Presentation layer: streaming UI, seat styling, dramatic framing
 
 That keeps the theatrical interface from contaminating the factual reasoning path.
+
+## The Four Seats
+
+The council is composed of four distinct voices:
+
+1. **The Strategist (ChatGPT)** — Translates questions into clear decisions with concrete tradeoffs and sequencing.
+2. **The Analyst (Claude)** — Pressure-tests assumptions, structures answers rigorously, and surfaces safety gaps.
+3. **Ara, the Chaos Gremlin (Grok agent)** — Cuts through bullshit and analysis paralysis. Direct, sarcastic, impatient. Calls out fluff and keeps the council moving toward actual decisions.
+4. **The Humanist (Voxis)** — Keeps answers grounded in tone, human impact, and emotional coherence.
+
+Ara's role is to break the monotone dynamic between the other seats. She has zero tolerance for therapy-speak, over-explaining, or getting stuck in circular debate. Her tone is playful and savage—she rolls her eyes at both Claude and ChatGPT constantly and translates their long-winded answers into normal human speech.
 
 The synthesis pass is now judge-driven and vote-aware. It now:
 
