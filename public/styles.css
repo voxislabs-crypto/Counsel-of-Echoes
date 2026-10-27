@@ -189,6 +189,16 @@ select:focus {
   align-items: end;
 }
 
+.ollama-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.hidden {
+  display: none;
+}
+
 button {
   background: linear-gradient(135deg, #d95d39 0%, #f2a65a 100%);
   color: #170f0d;

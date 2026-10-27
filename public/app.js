@@ -6,6 +6,8 @@ const state = {
 };
 
 const runtimeMode = document.querySelector("#runtime-mode");
+const modeSelect = document.querySelector("#mode");
+const ollamaNote = document.querySelector("#ollama-note");
 const agentsElement = document.querySelector("#agents");
 const eventsElement = document.querySelector("#events");
 const verdictTitle = document.querySelector("#verdict-title");
@@ -22,9 +24,30 @@ initialize().catch((error) => {
 async function initialize() {
   const configResponse = await fetch("/api/config");
   state.config = await configResponse.json();
-  runtimeMode.textContent = `${state.config.providerMode.toUpperCase()} mode`;
-  renderAgentCards(state.config.agents.filter((agent) => agent.id !== "voxis" || state.config.includeVoxis));
+  modeSelect.value = state.config.providerMode;
+  syncModeUI();
+  renderAgentCards(visibleAgents());
   connectSocket();
+}
+
+modeSelect.addEventListener("change", () => {
+  syncModeUI();
+  renderAgentCards(visibleAgents());
+});
+
+function visibleAgents() {
+  return state.config.agents.filter((agent) => {
+    if (modeSelect.value === "ollama") {
+      return agent.id !== "voxis";
+    }
+
+    return agent.id !== "voxis" || state.config.includeVoxis;
+  });
+}
+
+function syncModeUI() {
+  ollamaNote.classList.toggle("hidden", modeSelect.value !== "ollama");
+  runtimeMode.textContent = `${modeSelect.value.toUpperCase()} mode`;
 }
 
 runForm.addEventListener("submit", async (event) => {

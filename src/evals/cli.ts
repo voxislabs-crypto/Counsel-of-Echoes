@@ -11,7 +11,7 @@ async function main() {
   const config = readRuntimeConfig();
   const modeArg = process.argv.find((arg) => arg === "--mode");
   const modeValue = modeArg ? process.argv[process.argv.indexOf(modeArg) + 1] : undefined;
-  const mode = modeValue === "live" ? "live" : modeValue === "mock" ? "mock" : config.providerMode;
+  const mode = modeValue === "live" || modeValue === "ollama" ? modeValue : modeValue === "mock" ? "mock" : config.providerMode;
   const suiteArg = process.argv.find((arg) => arg === "--suite");
   const suiteValue = suiteArg ? process.argv[process.argv.indexOf(suiteArg) + 1] : undefined;
   const suite = suiteValue === "benchmark" ? "benchmark" : "default";

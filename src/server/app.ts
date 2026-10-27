@@ -3,6 +3,7 @@ import path from "node:path";
 import { RunStore } from "../store/runStore.js";
 import { CouncilService } from "../core/council.js";
 import type { RuntimeConfig } from "../providers/index.js";
+import type { ProviderMode } from "../providers/types.js";
 import { agentProfiles } from "../core/agents.js";
 import { EvalStore } from "../evals/store.js";
 import { EvalService } from "../evals/service.js";
@@ -25,6 +26,8 @@ export function createApp({ council, store, config, evals }: AppDependencies) {
     response.json({
       providerMode: config.providerMode,
       includeVoxis: config.includeVoxis,
+      availableModes: ["mock", "live", "ollama"],
+      ollamaUrl: config.ollamaUrl,
       agents: Object.values(agentProfiles)
     });
   });
@@ -60,7 +63,7 @@ export function createApp({ council, store, config, evals }: AppDependencies) {
   app.post("/api/evals", async (request, response) => {
     try {
       const result = await evals.runSuite({
-        mode: request.body?.mode === "live" ? "live" : request.body?.mode === "mock" ? "mock" : undefined
+        mode: readMode(request.body?.mode)
       });
       response.status(201).json(result);
     } catch (error) {
@@ -92,4 +95,12 @@ export function createApp({ council, store, config, evals }: AppDependencies) {
   });
 
   return app;
+}
+
+function readMode(value: unknown): ProviderMode | undefined {
+  if (value === "mock" || value === "live" || value === "ollama") {
+    return value;
+  }
+
+  return undefined;
 }

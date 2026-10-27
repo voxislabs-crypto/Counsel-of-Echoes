@@ -107,7 +107,7 @@ npm run eval:benchmark:report:mock
 
 A run can set `research: true`. Before proposals, the chamber gathers one evidence bundle for the question. Mock mode uses deterministic fixtures. Live mode uses Wikipedia's public API through a fetch guard that allows only http(s), caps redirects, time, and bytes, and refuses private, loopback, and link-local addresses after DNS resolution. Seats do not get tools. Evidence is a typed bundle on the provider input, rendered with data delimiters. Claim ids are namespaced per seat (`gpt:c1`). Citations that are not in the bundle are stripped and counted. Contradicted claims take a score penalty and cannot be accepted. Unsupported claims are pushed toward `monitor`.
 
-`ollama` is an accepted provider mode in the request schema. `src/providers/ollamaProvider.ts` is not on `clean-main`, so this branch does not set `num_ctx` or run local models. An `ollama` request still executes on the mock seats until that adapter is added.
+`ollama` runs three local seats through Ollama: Strategist on `llama3.1:8b`, Analyst on `mistral:7b`, and Chaos Gremlin on `qwen2.5:7b`. Voxis stays out. Each request sets `num_ctx` to 8192. Point `OLLAMA_URL` at the daemon, or leave the default `http://localhost:11434`.
 
 ## Evaluation Harness
 
