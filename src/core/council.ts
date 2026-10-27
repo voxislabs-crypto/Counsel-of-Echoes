@@ -2,12 +2,15 @@ import type { AgentId } from "./agents.js";
 import {
   runRequestSchema,
   type RunRequest,
-  type RunRecord
+  type RunRecord,
+  type Synthesis
 } from "./schemas.js";
 import { buildHeuristicJudgeSynthesis, buildResolutionTrace } from "./judge.js";
 import type { CouncilProvider, ProviderMode } from "../providers/types.js";
 import { createProviders, type RuntimeConfig } from "../providers/index.js";
 import { RunStore } from "../store/runStore.js";
+import { gather, stripUnknownEvidenceIds, stripUnknownFindings } from "../research/service.js";
+import type { EvidenceBundle } from "../research/schemas.js";
 
 export class CouncilService {
   constructor(
@@ -18,7 +21,7 @@ export class CouncilService {
   async startRun(input: unknown): Promise<{ runId: string; mode: ProviderMode; agents: AgentId[] }> {
     const request = runRequestSchema.parse(input);
     const providers = createProviders(this.config, request.mode);
-    const mode = providers.every((provider) => provider.mode === "mock") ? "mock" : "live";
+    const mode = resolveRunMode(providers);
     const record = this.store.createRun({ ...request, mode });
 
     await this.store.appendEvent(record.runId, {
@@ -43,7 +46,7 @@ export class CouncilService {
   async runAndWait(input: unknown): Promise<RunRecord> {
     const request = runRequestSchema.parse(input);
     const providers = createProviders(this.config, request.mode);
-    const mode = providers.every((provider) => provider.mode === "mock") ? "mock" : "live";
+    const mode = resolveRunMode(providers);
     const record = this.store.createRun({ ...request, mode });
 
     await this.store.appendEvent(record.runId, {
@@ -83,6 +86,9 @@ export class CouncilService {
         }
       });
 
+      const evidence = await this.gatherEvidence(runId, request, mode);
+      let unknownEvidenceIdsStripped = 0;
+
       const proposals = await Promise.all(
         providers.map(async (provider) => {
           await this.store.appendEvent(runId, {
@@ -95,11 +101,18 @@ export class CouncilService {
             }
           });
 
-          const proposal = await provider.propose({
+          const proposed = await provider.propose({
             question: request.question,
             context: request.context,
-            peers: providers.map((candidate) => candidate.agentId).filter((agentId) => agentId !== provider.agentId)
+            peers: providers.map((candidate) => candidate.agentId).filter((agentId) => agentId !== provider.agentId),
+            evidence
           });
+          const sanitized = stripUnknownEvidenceIds(proposed.claims, evidence);
+          unknownEvidenceIdsStripped += sanitized.stripped;
+          const proposal = {
+            ...proposed,
+            claims: sanitized.claims
+          };
 
           await this.streamText(runId, provider.agentId, proposal.summary);
           await this.store.appendEvent(runId, {
@@ -107,7 +120,8 @@ export class CouncilService {
             type: "proposal.completed",
             agentId: provider.agentId,
             payload: {
-              proposal
+              proposal,
+              unknownEvidenceIdsStripped: sanitized.stripped
             }
           });
 
@@ -127,19 +141,27 @@ export class CouncilService {
             }
           });
 
-          const critique = await provider.critique({
+          const drafted = await provider.critique({
             question: request.question,
             context: request.context,
             target,
-            peers: proposals.filter((proposal) => proposal.agentId !== provider.agentId)
+            peers: proposals.filter((proposal) => proposal.agentId !== provider.agentId),
+            evidence
           });
+          const sanitizedFindings = stripUnknownFindings(drafted.evidenceFindings, evidence);
+          unknownEvidenceIdsStripped += sanitizedFindings.stripped;
+          const critique = {
+            ...drafted,
+            evidenceFindings: sanitizedFindings.findings
+          };
 
           await this.store.appendEvent(runId, {
             runId,
             type: "critique.completed",
             agentId: provider.agentId,
             payload: {
-              critique
+              critique,
+              unknownEvidenceIdsStripped: sanitizedFindings.stripped
             }
           });
 
@@ -154,20 +176,34 @@ export class CouncilService {
         payload: {
           proposalCount: proposals.length,
           critiqueCount: critiques.length,
-          judgeAgentId: judgeProvider.agentId
+          judgeAgentId: judgeProvider.agentId,
+          unknownEvidenceIdsStripped
         }
       });
 
-      const resolutionTrace = buildResolutionTrace(proposals, critiques);
-      const synthesis = await judgeProvider
-        .synthesize({
+      const resolutionTrace = buildResolutionTrace(proposals, critiques, evidence);
+      let synthesis: Synthesis;
+      try {
+        synthesis = await judgeProvider.synthesize({
           question: request.question,
           context: request.context,
           proposals,
           critiques,
-          resolutionTrace
-        })
-        .catch(() => buildHeuristicJudgeSynthesis(request.question, proposals, critiques, resolutionTrace));
+          resolutionTrace,
+          evidence
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Judge synthesis failed";
+        await this.store.appendEvent(runId, {
+          runId,
+          type: "synthesis.fallback",
+          payload: {
+            judgeAgentId: judgeProvider.agentId,
+            message
+          }
+        });
+        synthesis = buildHeuristicJudgeSynthesis(request.question, proposals, critiques, resolutionTrace, evidence);
+      }
 
       await this.store.appendEvent(runId, {
         runId,
@@ -198,6 +234,50 @@ export class CouncilService {
     }
   }
 
+  private async gatherEvidence(runId: string, request: RunRequest, mode: ProviderMode): Promise<EvidenceBundle | undefined> {
+    if (!request.research) {
+      return undefined;
+    }
+
+    await this.store.appendEvent(runId, {
+      runId,
+      type: "research.started",
+      payload: {
+        query: request.question
+      }
+    });
+
+    const evidence = await gather({
+      query: request.question,
+      mode
+    });
+    await this.store.setEvidence(runId, evidence);
+
+    if (evidence.status === "empty") {
+      await this.store.appendEvent(runId, {
+        runId,
+        type: "research.failed",
+        payload: {
+          query: evidence.query,
+          status: evidence.status
+        }
+      });
+      return evidence;
+    }
+
+    await this.store.appendEvent(runId, {
+      runId,
+      type: "research.completed",
+      payload: {
+        query: evidence.query,
+        status: evidence.status,
+        itemCount: evidence.items.length
+      }
+    });
+
+    return evidence;
+  }
+
   private async streamText(runId: string, agentId: AgentId, text: string): Promise<void> {
     const words = text.split(/\s+/).filter(Boolean);
     const chunkSize = 10;
@@ -216,6 +296,14 @@ export class CouncilService {
       await wait(40);
     }
   }
+}
+
+function resolveRunMode(providers: CouncilProvider[]): ProviderMode {
+  if (providers.every((provider) => provider.mode === "ollama")) {
+    return "ollama";
+  }
+
+  return providers.every((provider) => provider.mode === "mock") ? "mock" : "live";
 }
 
 function chooseJudgeProvider(providers: CouncilProvider[]): CouncilProvider {

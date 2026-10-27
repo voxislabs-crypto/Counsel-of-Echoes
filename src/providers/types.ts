@@ -1,12 +1,14 @@
 import type { AgentId } from "../core/agents.js";
 import type { Critique, Proposal, ResolutionTraceItem, Synthesis } from "../core/schemas.js";
+import type { EvidenceBundle } from "../research/schemas.js";
 
-export type ProviderMode = "mock" | "live";
+export type ProviderMode = "mock" | "live" | "ollama";
 
 export type ProposalInput = {
   question: string;
   context: string;
   peers: AgentId[];
+  evidence?: EvidenceBundle;
 };
 
 export type CritiqueInput = {
@@ -14,6 +16,7 @@ export type CritiqueInput = {
   context: string;
   target: Proposal;
   peers: Proposal[];
+  evidence?: EvidenceBundle;
 };
 
 export type SynthesisInput = {
@@ -22,6 +25,7 @@ export type SynthesisInput = {
   proposals: Proposal[];
   critiques: Critique[];
   resolutionTrace: ResolutionTraceItem[];
+  evidence?: EvidenceBundle;
 };
 
 export interface CouncilProvider {

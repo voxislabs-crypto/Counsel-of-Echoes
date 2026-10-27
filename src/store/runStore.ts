@@ -12,6 +12,7 @@ import {
   type RunStatus,
   type Synthesis
 } from "../core/schemas.js";
+import type { EvidenceBundle } from "../research/schemas.js";
 
 type StoreEvents = {
   event: (event: CouncilEvent) => void;
@@ -63,6 +64,13 @@ export class RunStore {
     return () => {
       this.emitter.off("event", listener);
     };
+  }
+
+  async setEvidence(runId: string, evidence: EvidenceBundle): Promise<void> {
+    const record = this.requireRun(runId);
+    record.evidence = evidence;
+    record.updatedAt = new Date().toISOString();
+    await this.persist(record);
   }
 
   async setStatus(runId: string, status: RunStatus, error?: string): Promise<void> {

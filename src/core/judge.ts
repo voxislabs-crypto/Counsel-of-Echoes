@@ -6,22 +6,29 @@ import {
   type ResolutionTraceItem,
   type Synthesis
 } from "./schemas.js";
+import type { EvidenceBundle, EvidenceStatus } from "../research/schemas.js";
 
 type ResolvedClaim = ResolutionTraceItem & {
   supportCount: number;
   challengeCount: number;
 };
 
-export function buildResolutionTrace(proposals: Proposal[], critiques: Critique[]): ResolutionTraceItem[] {
-  return resolveClaims(proposals, critiques)
+export function buildResolutionTrace(
+  proposals: Proposal[],
+  critiques: Critique[],
+  evidence?: EvidenceBundle
+): ResolutionTraceItem[] {
+  return resolveClaims(proposals, critiques, evidence)
     .slice(0, 12)
     .map((claim) => ({
+      claimRef: claim.claimRef,
       statement: claim.statement,
       disposition: claim.disposition,
       sourceAgents: claim.sourceAgents,
       challengedBy: claim.challengedBy,
       score: claim.score,
-      rationale: claim.rationale
+      rationale: claim.rationale,
+      evidenceStatus: claim.evidenceStatus
     }));
 }
 
@@ -29,9 +36,10 @@ export function buildHeuristicJudgeSynthesis(
   question: string,
   proposals: Proposal[],
   critiques: Critique[],
-  resolutionTraceInput?: ResolutionTraceItem[]
+  resolutionTraceInput?: ResolutionTraceItem[],
+  evidence?: EvidenceBundle
 ): Synthesis {
-  const resolvedClaims = hydrateResolvedClaims(proposals, critiques, resolutionTraceInput);
+  const resolvedClaims = hydrateResolvedClaims(proposals, critiques, resolutionTraceInput, evidence);
   const acceptedClaims = resolvedClaims.filter((claim) => claim.disposition === "accepted").slice(0, 5);
   const monitoredClaims = resolvedClaims.filter((claim) => claim.disposition === "monitor").slice(0, 5);
 
@@ -108,12 +116,14 @@ export function buildHeuristicJudgeSynthesis(
 
   const confidenceBand = determineConfidenceBand(resolvedClaims, disagreements.length, uncertainties.length);
   const resolutionTrace = resolvedClaims.slice(0, 8).map((claim) => ({
+    claimRef: claim.claimRef,
     statement: claim.statement,
     disposition: claim.disposition,
     sourceAgents: claim.sourceAgents,
     challengedBy: claim.challengedBy,
     score: claim.score,
-    rationale: claim.rationale
+    rationale: claim.rationale,
+    evidenceStatus: claim.evidenceStatus
   }));
 
   const viewpointSummary = viewpoints
@@ -152,10 +162,11 @@ export function buildHeuristicJudgeSynthesis(
 function hydrateResolvedClaims(
   proposals: Proposal[],
   critiques: Critique[],
-  resolutionTraceInput?: ResolutionTraceItem[]
+  resolutionTraceInput?: ResolutionTraceItem[],
+  evidence?: EvidenceBundle
 ): ResolvedClaim[] {
   if (!resolutionTraceInput || resolutionTraceInput.length === 0) {
-    return resolveClaims(proposals, critiques);
+    return resolveClaims(proposals, critiques, evidence);
   }
 
   return resolutionTraceInput
@@ -167,27 +178,47 @@ function hydrateResolvedClaims(
     .sort((left, right) => right.score - left.score);
 }
 
-function resolveClaims(proposals: Proposal[], critiques: Critique[]): ResolvedClaim[] {
+function resolveClaims(proposals: Proposal[], critiques: Critique[], evidence?: EvidenceBundle): ResolvedClaim[] {
   return proposals
-    .flatMap((proposal) => proposal.claims.map((claim) => buildResolvedClaim(proposal, claim, critiques)))
+    .flatMap((proposal) => proposal.claims.map((claim) => buildResolvedClaim(proposal, claim, critiques, evidence)))
     .sort((left, right) => right.score - left.score);
 }
 
-function buildResolvedClaim(proposal: Proposal, claim: Proposal["claims"][number], critiques: Critique[]): ResolvedClaim {
+function buildResolvedClaim(
+  proposal: Proposal,
+  claim: Proposal["claims"][number],
+  critiques: Critique[],
+  evidence?: EvidenceBundle
+): ResolvedClaim {
   const relatedCritiques = critiques.filter(
     (critique) => critique.targetAgentId === proposal.agentId && critique.challengedClaimIds.includes(claim.id)
   );
   const challengePenalty = relatedCritiques.reduce((sum, critique) => sum + severityPenalty(critique.severity), 0);
+  const evidenceStatus = classifyEvidence(claim, critiques, evidence);
+  const evidencePenalty = evidenceStatus === "contradicted" ? 0.3 : 0;
   const supportCount = 1;
   const challengeCount = relatedCritiques.length;
-  const score = clamp01(claim.confidence + supportCount * 0.05 - challengePenalty);
-  const disposition = score >= 0.78 && challengeCount <= 1 ? "accepted" : score >= 0.58 ? "monitor" : "rejected";
+  const score = clamp01(claim.confidence + supportCount * 0.05 - challengePenalty - evidencePenalty);
+  let disposition: ResolutionTraceItem["disposition"] = score >= 0.78 && challengeCount <= 1
+    ? "accepted"
+    : score >= 0.58
+      ? "monitor"
+      : "rejected";
+
+  if ((evidenceStatus === "contradicted" || evidenceStatus === "unsupported") && disposition === "accepted") {
+    disposition = "monitor";
+  }
+
   const challengedBy = relatedCritiques.map((critique) => critique.agentId);
-  const rationale = relatedCritiques.length
-    ? `${proposal.agentId} proposed this claim, but ${challengedBy.join(", ")} challenged it during critique.`
-    : `${proposal.agentId} proposed this claim and no critique directly displaced it.`;
+  const rationale = [
+    relatedCritiques.length
+      ? `${proposal.agentId} proposed this claim, but ${challengedBy.join(", ")} challenged it during critique.`
+      : `${proposal.agentId} proposed this claim and no critique directly displaced it.`,
+    `Evidence status: ${evidenceStatus}.`
+  ].join(" ");
 
   return {
+    claimRef: claim.id,
     statement: claim.statement,
     sourceAgents: [proposal.agentId],
     supportCount,
@@ -195,8 +226,27 @@ function buildResolvedClaim(proposal: Proposal, claim: Proposal["claims"][number
     score,
     disposition,
     challengedBy,
-    rationale
+    rationale,
+    evidenceStatus
   };
+}
+
+function classifyEvidence(
+  claim: Proposal["claims"][number],
+  critiques: Critique[],
+  evidence?: EvidenceBundle
+): EvidenceStatus {
+  const findings = critiques.flatMap((critique) => critique.evidenceFindings).filter((finding) => finding.claimId === claim.id);
+  if (findings.some((finding) => finding.relation === "contradicts")) {
+    return "contradicted";
+  }
+  if (findings.some((finding) => finding.relation === "supports")) {
+    return "supported";
+  }
+  if (evidence && evidence.items.length > 0) {
+    return "unsupported";
+  }
+  return "unchecked";
 }
 
 function determineConfidenceBand(

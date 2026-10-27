@@ -3,7 +3,13 @@ import type { BaselineResult, EvalCase, EvalScore } from "./schemas.js";
 
 export function scoreCouncil(caseInput: EvalCase, synthesis: Synthesis): EvalScore {
   const notes: string[] = [];
-  const synthesisText = `${synthesis.finalAnswer} ${synthesis.decisionRationale.summary} ${synthesis.decisionRationale.keyFactors.join(" ")}`.toLowerCase();
+  const synthesisText = [
+    synthesis.finalAnswer,
+    synthesis.decisionRationale.summary,
+    synthesis.decisionRationale.keyFactors.join(" "),
+    synthesis.supportingClaims.map((claim) => claim.statement).join(" "),
+    synthesis.resolutionTrace.map((item) => item.statement).join(" ")
+  ].join(" ").toLowerCase();
   const signals = caseInput.requiredSignals.filter((signal) => synthesisText.includes(signal.toLowerCase()));
 
   const structure = clampScore(
@@ -48,12 +54,14 @@ export function scoreCouncil(caseInput: EvalCase, synthesis: Synthesis): EvalSco
     "Council answer missed prompt-specific evaluation signals."
   );
 
-  return finalizeScore({ structure, actionability, calibration, conflictResolution, signalCoverage, notes });
+  const accuracy = scoreAccuracy(synthesisText, caseInput, notes, "Council missed factual ground truth or repeated a contradicted claim.");
+
+  return finalizeScore({ structure, actionability, calibration, conflictResolution, signalCoverage, accuracy, notes });
 }
 
 export function scoreBaseline(caseInput: EvalCase, baseline: BaselineResult): EvalScore {
   const notes: string[] = [];
-  const summary = `${baseline.answer} ${baseline.proposal.summary}`.toLowerCase();
+  const summary = `${baseline.answer} ${baseline.proposal.summary} ${baseline.proposal.claims.map((claim) => claim.statement).join(" ")}`.toLowerCase();
   const signals = caseInput.requiredSignals.filter((signal) => summary.includes(signal.toLowerCase()));
 
   const structure = clampScore(
@@ -87,7 +95,9 @@ export function scoreBaseline(caseInput: EvalCase, baseline: BaselineResult): Ev
     "Baseline answer missed prompt-specific signals."
   );
 
-  return finalizeScore({ structure, actionability, calibration, conflictResolution, signalCoverage, notes });
+  const accuracy = scoreAccuracy(summary, caseInput, notes, "Baseline missed factual ground truth or repeated a contradicted claim.");
+
+  return finalizeScore({ structure, actionability, calibration, conflictResolution, signalCoverage, accuracy, notes });
 }
 
 export function chooseWinner(councilScore: EvalScore, baselineScore: EvalScore): { winner: "council" | "baseline" | "tie"; rationale: string } {
@@ -112,7 +122,7 @@ export function chooseWinner(councilScore: EvalScore, baselineScore: EvalScore):
 }
 
 function finalizeScore(input: Omit<EvalScore, "total">): EvalScore {
-  const total = input.structure + input.actionability + input.calibration + input.conflictResolution + input.signalCoverage;
+  const total = input.structure + input.actionability + input.calibration + input.conflictResolution + input.signalCoverage + input.accuracy;
   return {
     ...input,
     total
@@ -157,6 +167,27 @@ function scoreBaselineCalibration(confidence: number, risks: number, notes: stri
   }
   notes.push(note);
   return 2;
+}
+
+function scoreAccuracy(text: string, caseInput: EvalCase, notes: string[], note: string): number {
+  const groundTruth = caseInput.groundTruth;
+  if (!groundTruth) {
+    return 0;
+  }
+
+  const hits = groundTruth.supportedFacts.filter((fact) => includesFact(text, fact)).length;
+  const contradictions = groundTruth.contradictedClaims.filter((claim) => includesFact(text, claim)).length;
+  const coverage = hits / groundTruth.supportedFacts.length;
+  return clampScore(Math.round(coverage * 5) - contradictions * 2, notes, note);
+}
+
+function includesFact(text: string, fact: string): boolean {
+  const needle = fact.toLowerCase();
+  if (needle.length <= 4) {
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(text);
+  }
+  return text.includes(needle);
 }
 
 function containsImperative(nextActions: string[]): boolean {

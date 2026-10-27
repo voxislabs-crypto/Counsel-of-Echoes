@@ -1,13 +1,17 @@
-import { getEnabledAgentIds } from "../core/agents.js";
+import { agentProfiles, getEnabledAgentIds } from "../core/agents.js";
 import type { AgentId } from "../core/agents.js";
 import type { CouncilProvider, ProviderMode } from "./types.js";
 import { LiveProvider } from "./liveProvider.js";
 import { MockProvider } from "./mockProvider.js";
+import { createOllamaProvider } from "./ollamaProvider.js";
+
+const ollamaSeats = ["gpt", "claude", "grok"] as const;
 
 export type RuntimeConfig = {
   port: number;
   providerMode: ProviderMode;
   includeVoxis: boolean;
+  ollamaUrl: string;
   openAiKey?: string;
   openAiModel: string;
   anthropicKey?: string;
@@ -20,8 +24,9 @@ export type RuntimeConfig = {
 export function readRuntimeConfig(): RuntimeConfig {
   return {
     port: Number(process.env.PORT ?? 3000),
-    providerMode: process.env.COE_PROVIDER_MODE === "live" ? "live" : "mock",
+    providerMode: readProviderMode(process.env.COE_PROVIDER_MODE),
     includeVoxis: process.env.COE_INCLUDE_VOXIS === "true",
+    ollamaUrl: process.env.OLLAMA_URL ?? "http://localhost:11434",
     openAiKey: process.env.OPENAI_API_KEY,
     openAiModel: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
     anthropicKey: process.env.ANTHROPIC_API_KEY,
@@ -32,9 +37,22 @@ export function readRuntimeConfig(): RuntimeConfig {
   };
 }
 
+export function readProviderMode(value: string | undefined): ProviderMode {
+  return value === "live" || value === "ollama" ? value : "mock";
+}
+
 export function createProviders(config: RuntimeConfig, modeOverride?: ProviderMode): CouncilProvider[] {
   const mode = modeOverride ?? config.providerMode;
   const enabledAgents = getEnabledAgentIds(config.includeVoxis);
+
+  if (mode === "ollama") {
+    // Three local seats only. Voxis stays out so the machine is not running four inferences at once.
+    return ollamaSeats.map((agentId) => createOllamaProvider({
+      agentId,
+      baseUrl: config.ollamaUrl,
+      systemPrompt: seatSystemPrompt(agentId)
+    }));
+  }
 
   if (mode === "live") {
     const liveProviders: CouncilProvider[] = [];
@@ -85,6 +103,15 @@ export function createProviderForAgent(
 ): CouncilProvider {
   const providers = createProviders(config, modeOverride);
   return providers.find((provider) => provider.agentId === agentId) ?? providers[0];
+}
+
+function seatSystemPrompt(agentId: (typeof ollamaSeats)[number]): string {
+  const profile = agentProfiles[agentId];
+  const voice = agentId === "grok"
+    ? " Tone: direct, impatient, sarcastic, and brutally honest. Cut bullshit and refuse analysis paralysis."
+    : "";
+
+  return `You are ${profile.label}, seat ${profile.seat}. ${profile.role} Critique lens: ${profile.critiqueLens}.${voice}`;
 }
 
 function readBaselineAgent(value: string | undefined): AgentId {

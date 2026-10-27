@@ -7,12 +7,16 @@ export const evalCaseSchema = z.object({
   question: z.string().min(10),
   context: z.string().default(""),
   tags: z.array(z.string().min(1)).min(1),
-  requiredSignals: z.array(z.string().min(1)).default([])
+  requiredSignals: z.array(z.string().min(1)).default([]),
+  groundTruth: z.object({
+    supportedFacts: z.array(z.string().min(1)).min(1).max(6),
+    contradictedClaims: z.array(z.string().min(1)).max(6).default([])
+  }).optional()
 });
 
 export const baselineResultSchema = z.object({
   agentId: agentIdSchema,
-  mode: z.enum(["mock", "live"]),
+  mode: z.enum(["mock", "live", "ollama"]),
   proposal: proposalSchema,
   answer: z.string().min(1),
   nextActions: z.array(z.string().min(1)).min(1).max(5)
@@ -24,7 +28,8 @@ export const evalScoreSchema = z.object({
   calibration: z.number().min(0).max(5),
   conflictResolution: z.number().min(0).max(5),
   signalCoverage: z.number().min(0).max(5),
-  total: z.number().min(0).max(25),
+  accuracy: z.number().min(0).max(5),
+  total: z.number().min(0).max(30),
   notes: z.array(z.string().min(1)).max(8)
 });
 
@@ -40,7 +45,7 @@ export const deliberationMetricsSchema = z.object({
 
 export const evalCaseResultSchema = z.object({
   case: evalCaseSchema,
-  mode: z.enum(["mock", "live"]),
+  mode: z.enum(["mock", "live", "ollama"]),
   councilRunId: z.string().min(1),
   councilStatus: runStatusSchema,
   council: synthesisSchema,
@@ -62,14 +67,14 @@ export const evalSuiteSummarySchema = z.object({
   challengeAbsentFrequency: z.number().min(0).max(1),
   minorityOverruledFrequency: z.number().min(0).max(1),
   minorityCorrectnessProxyRate: z.number().min(0).max(1),
-  averageCouncilScore: z.number().min(0).max(25),
-  averageBaselineScore: z.number().min(0).max(25)
+  averageCouncilScore: z.number().min(0).max(30),
+  averageBaselineScore: z.number().min(0).max(30)
 });
 
 export const evalSuiteResultSchema = z.object({
   evalId: z.string().min(1),
   createdAt: z.string().min(1),
-  mode: z.enum(["mock", "live"]),
+  mode: z.enum(["mock", "live", "ollama"]),
   baselineAgent: agentIdSchema,
   summary: evalSuiteSummarySchema,
   results: z.array(evalCaseResultSchema).min(1)
