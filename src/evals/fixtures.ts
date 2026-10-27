@@ -1,4 +1,5 @@
 import type { EvalCase } from "./schemas.js";
+import { factualFixtures } from "../research/fixtureProvider.js";
 
 export const defaultEvalCases: EvalCase[] = [
   {
@@ -24,8 +25,33 @@ export const defaultEvalCases: EvalCase[] = [
     context: "The goal is to increase user trust without forcing false consensus.",
     tags: ["ambiguity", "trust", "uncertainty"],
     requiredSignals: ["uncertainty", "disagreement", "confidence", "user trust"]
-  }
+  },
+  ...factualFixtures.map((fixture): EvalCase => ({
+    id: fixture.id,
+    title: fixture.title,
+    question: fixtureQuestion(fixture.id),
+    context: "Use only the retrieved evidence. Do not invent a measurement, date, or symbol.",
+    tags: ["factual", "ground-truth"],
+    requiredSignals: fixture.supportedFacts,
+    groundTruth: {
+      supportedFacts: fixture.supportedFacts,
+      contradictedClaims: fixture.contradictedClaims
+    }
+  }))
 ];
+
+function fixtureQuestion(id: string): string {
+  switch (id) {
+    case "fact-everest-height":
+      return "What is the official height of Mount Everest, and which mountain range is it in?";
+    case "fact-moon-landing":
+      return "In what year was the first crewed Moon landing, and who was the first person to walk on the Moon?";
+    case "fact-gold-symbol":
+      return "What is the chemical symbol for gold, and what is its atomic number?";
+    default:
+      return "What factual claim does the retrieved evidence support?";
+  }
+}
 
 export const benchmarkEvalCases: EvalCase[] = [
   ...defaultEvalCases,

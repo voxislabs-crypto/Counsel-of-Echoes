@@ -1,6 +1,7 @@
 import { agentProfiles, type AgentId } from "../core/agents.js";
 import { critiqueSchema, proposalSchema, synthesisSchema, type Critique, type Proposal, type Synthesis } from "../core/schemas.js";
 import type { CouncilProvider, CritiqueInput, ProposalInput, SynthesisInput } from "./types.js";
+import { renderEvidenceData } from "../research/service.js";
 
 type LiveProviderKind = "openai" | "anthropic" | "xai";
 
@@ -44,11 +45,12 @@ export class LiveProvider implements CouncilProvider {
         summary: "string",
         claims: [
           {
-            id: `${this.agentId}-claim-1`,
+            id: `${this.agentId}:c1`,
             statement: "string",
             rationale: "string",
             confidence: 0.75,
-            risk: "string"
+            risk: "string",
+            evidenceIds: []
           }
         ],
         assumptions: ["string"],
@@ -61,7 +63,10 @@ export class LiveProvider implements CouncilProvider {
       `Question: ${input.question}`,
       input.context ? `Context: ${input.context}` : "Context: none provided",
       `Other seats present: ${input.peers.join(", ")}`,
-      "Give 2 to 4 concrete claims. Keep them concise and falsifiable."
+      renderEvidenceData(input.evidence),
+      "Give 2 to 4 concrete claims. Keep them concise and falsifiable.",
+      `Use claim ids ${this.agentId}:c1, ${this.agentId}:c2, and so on.`,
+      "Cite at most 3 evidence ids copied from the bundle. You have no tools."
     ].join("\n");
 
     const raw = await this.requestJson(system, user);
@@ -88,11 +93,18 @@ export class LiveProvider implements CouncilProvider {
       JSON.stringify({
         agentId: this.agentId,
         targetAgentId: input.target.agentId,
-        challengedClaimIds: [input.target.claims[0]?.id ?? `${input.target.agentId}-claim-1`],
+        challengedClaimIds: [input.target.claims[0]?.id ?? `${input.target.agentId}:c1`],
         usefulAgreements: ["string"],
         concerns: ["string"],
         recommendation: "string",
-        severity: "medium"
+        severity: "medium",
+        evidenceFindings: [
+          {
+            claimId: input.target.claims[0]?.id ?? `${input.target.agentId}:c1`,
+            evidenceId: "fixture:1",
+            relation: "supports"
+          }
+        ]
       })
     ].join("\n");
 
@@ -101,7 +113,9 @@ export class LiveProvider implements CouncilProvider {
       input.context ? `Context: ${input.context}` : "Context: none provided",
       `Target proposal: ${JSON.stringify(input.target)}`,
       `Peer summaries: ${JSON.stringify(input.peers.map((peer) => ({ agentId: peer.agentId, summary: peer.summary })))} `,
-      "Challenge weak logic, preserve strong ideas, and avoid rewriting the whole answer."
+      renderEvidenceData(input.evidence),
+      "Challenge weak logic, preserve strong ideas, and avoid rewriting the whole answer.",
+      "Record evidenceFindings that relate a claim id to an evidence id as supports, contradicts, or unrelated. You have no tools."
     ].join("\n");
 
     const raw = await this.requestJson(system, user);
@@ -151,7 +165,9 @@ export class LiveProvider implements CouncilProvider {
             sourceAgents: ["gpt"],
             challengedBy: ["claude"],
             score: 0.71,
-            rationale: "string"
+            claimRef: "gpt:c1",
+            rationale: "string",
+            evidenceStatus: "unchecked"
           }
         ],
         deliberation: {
@@ -188,7 +204,9 @@ export class LiveProvider implements CouncilProvider {
       `Proposals: ${JSON.stringify(input.proposals)}`,
       `Critiques: ${JSON.stringify(input.critiques)}`,
       `Current resolutionTrace: ${JSON.stringify(input.resolutionTrace)}`,
-      "Build a concise but explicit synthesis with viewpoints, agreement check, vote rule, final decision, and decision rationale."
+      renderEvidenceData(input.evidence),
+      "Build a concise but explicit synthesis with viewpoints, agreement check, vote rule, final decision, and decision rationale.",
+      "A contradicted claim cannot be accepted. Unsupported evidence pushes the claim toward monitor. You have no tools."
     ].join("\n");
 
     const raw = await this.requestJson(system, user);

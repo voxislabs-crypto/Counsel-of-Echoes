@@ -3,6 +3,7 @@ import type { AgentId } from "../core/agents.js";
 import type { ProviderMode } from "../providers/types.js";
 import { CouncilService } from "../core/council.js";
 import type { Critique, Proposal, Synthesis } from "../core/schemas.js";
+import type { EvidenceBundle } from "../research/schemas.js";
 import { EvalStore } from "./store.js";
 import { defaultEvalCases } from "./fixtures.js";
 import {
@@ -33,14 +34,15 @@ export class EvalService {
       const councilRun = await this.council.runAndWait({
         question: caseInput.question,
         context: caseInput.context,
-        mode
+        mode,
+        research: Boolean(caseInput.groundTruth)
       });
 
       if (!councilRun.synthesis) {
         throw new Error(`Council run ${councilRun.runId} completed without synthesis`);
       }
 
-      const baseline = await this.runBaseline(caseInput, mode);
+      const baseline = await this.runBaseline(caseInput, mode, councilRun.evidence);
       const councilScore = scoreCouncil(caseInput, councilRun.synthesis);
       const baselineScore = scoreBaseline(caseInput, baseline);
       const deliberationMetrics = deriveDeliberationMetrics(councilRun.synthesis, councilRun.critiques);
@@ -82,12 +84,13 @@ export class EvalService {
     return this.store.get(evalId);
   }
 
-  private async runBaseline(caseInput: EvalCase, mode: ProviderMode): Promise<BaselineResult> {
+  private async runBaseline(caseInput: EvalCase, mode: ProviderMode, evidence?: EvidenceBundle): Promise<BaselineResult> {
     const provider = createProviderForAgent(this.config, this.config.baselineAgent, mode);
     const proposal = await provider.propose({
       question: caseInput.question,
       context: caseInput.context,
-      peers: []
+      peers: [],
+      evidence
     });
 
     return baselineResultSchema.parse({

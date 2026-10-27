@@ -2,6 +2,7 @@ import { agentProfiles, type AgentId } from "../core/agents.js";
 import { critiqueSchema, proposalSchema, type Critique, type Proposal, type Synthesis } from "../core/schemas.js";
 import { buildHeuristicJudgeSynthesis } from "../core/judge.js";
 import type { CouncilProvider, CritiqueInput, ProposalInput, SynthesisInput } from "./types.js";
+import { renderEvidenceData } from "../research/service.js";
 
 const stanceTemplates: Record<AgentId, string> = {
   gpt: "Turn the question into a sequence of decisions with clear tradeoffs.",
@@ -23,11 +24,22 @@ export class MockProvider implements CouncilProvider {
     const profile = agentProfiles[this.agentId];
     const subject = summarizeQuestion(input.question);
     const claims = buildClaims(this.agentId, subject);
+    const lead = input.evidence?.items[0];
+    if (lead) {
+      claims[0] = {
+        ...claims[0],
+        statement: lead.excerpt,
+        rationale: `The retrieved excerpt from ${lead.title} states this directly.`,
+        evidenceIds: [lead.id]
+      };
+    }
     const proposal: Proposal = {
       agentId: this.agentId,
       model: this.modelName,
       stance: stanceTemplates[this.agentId],
-      summary: `${profile.seat} sees the best path as a disciplined response to ${subject.toLowerCase()}, with emphasis on ${claims[0].statement.toLowerCase()}.`,
+      summary: lead
+        ? `${profile.seat} retrieved evidence for ${subject.toLowerCase()}.\n${renderEvidenceData(input.evidence)}`
+        : `${profile.seat} sees the best path as a disciplined response to ${subject.toLowerCase()}, with emphasis on ${claims[0].statement.toLowerCase()}.`,
       claims,
       assumptions: buildAssumptions(this.agentId, subject),
       risks: buildRisks(this.agentId, subject),
@@ -49,14 +61,25 @@ export class MockProvider implements CouncilProvider {
       ],
       concerns: buildConcerns(this.agentId, targetClaim.statement),
       recommendation: buildRecommendation(this.agentId, input.target.agentId),
-      severity: severityForAgent(this.agentId)
+      severity: severityForAgent(this.agentId),
+      evidenceFindings: targetClaim.evidenceIds.slice(0, 3).map((evidenceId) => ({
+        claimId: targetClaim.id,
+        evidenceId,
+        relation: "supports" as const
+      }))
     };
 
     return critiqueSchema.parse(critique);
   }
 
   async synthesize(input: SynthesisInput): Promise<Synthesis> {
-    return buildHeuristicJudgeSynthesis(input.question, input.proposals, input.critiques, input.resolutionTrace);
+    return buildHeuristicJudgeSynthesis(
+      input.question,
+      input.proposals,
+      input.critiques,
+      input.resolutionTrace,
+      input.evidence
+    );
   }
 }
 
@@ -64,16 +87,8 @@ function summarizeQuestion(question: string): string {
   return question.replace(/\s+/g, " ").trim().slice(0, 140);
 }
 
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 36);
-}
-
 function buildClaims(agentId: AgentId, subject: string) {
-  const claimSets: Record<AgentId, Array<Omit<Proposal["claims"][number], "id">>> = {
+  const claimSets: Record<AgentId, Array<Omit<Proposal["claims"][number], "id" | "evidenceIds">>> = {
     gpt: [
       {
         statement: `Start with a narrow first release for ${subject}`,
@@ -157,7 +172,8 @@ function buildClaims(agentId: AgentId, subject: string) {
   };
 
   return claimSets[agentId].map((claim, index) => ({
-    id: `${agentId}-${slugify(claim.statement)}-${index + 1}`,
+    id: `${agentId}:c${index + 1}`,
+    evidenceIds: [] as string[],
     ...claim
   }));
 }

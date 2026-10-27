@@ -20,7 +20,11 @@ export type RuntimeConfig = {
 export function readRuntimeConfig(): RuntimeConfig {
   return {
     port: Number(process.env.PORT ?? 3000),
-    providerMode: process.env.COE_PROVIDER_MODE === "live" ? "live" : "mock",
+    providerMode: process.env.COE_PROVIDER_MODE === "live"
+      ? "live"
+      : process.env.COE_PROVIDER_MODE === "ollama"
+        ? "ollama"
+        : "mock",
     includeVoxis: process.env.COE_INCLUDE_VOXIS === "true",
     openAiKey: process.env.OPENAI_API_KEY,
     openAiModel: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",

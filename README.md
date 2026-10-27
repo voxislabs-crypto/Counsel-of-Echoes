@@ -54,6 +54,7 @@ Core loop:
 
 ```text
 Question
+	-> optional pre-research evidence bundle
 	-> parallel proposals
 	-> single critique pass
 	-> synthesis
@@ -102,6 +103,12 @@ npm run eval:benchmark:report:mock
 - Every major behavioral or architecture update should include a matching README update in the same commit.
 - Keep protocol sections current when synthesis contracts, vote logic, or evaluation dimensions change.
 
+## Research
+
+A run can set `research: true`. Before proposals, the chamber gathers one evidence bundle for the question. Mock mode uses deterministic fixtures. Live mode uses Wikipedia's public API through a fetch guard that allows only http(s), caps redirects, time, and bytes, and refuses private, loopback, and link-local addresses after DNS resolution. Seats do not get tools. Evidence is a typed bundle on the provider input, rendered with data delimiters. Claim ids are namespaced per seat (`gpt:c1`). Citations that are not in the bundle are stripped and counted. Contradicted claims take a score penalty and cannot be accepted. Unsupported claims are pushed toward `monitor`.
+
+`ollama` is an accepted provider mode in the request schema. `src/providers/ollamaProvider.ts` is not on `clean-main`, so this branch does not set `num_ctx` or run local models. An `ollama` request still executes on the mock seats until that adapter is added.
+
 ## Evaluation Harness
 
 The repo can now score the council against a single-agent baseline.
@@ -111,7 +118,7 @@ What it does:
 - Runs a default suite of prompts designed for ambiguity, tradeoffs, and disagreement
 - Executes the full council loop for each case
 - Executes a single-agent baseline using `COE_BASELINE_AGENT` or `gpt` by default
-- Scores both outputs across structure, actionability, calibration, conflict resolution, and prompt-signal coverage
+- Scores both outputs across structure, actionability, calibration, conflict resolution, prompt-signal coverage, and factual accuracy
 - Tracks deliberation protocol metrics including agreement rate, vote-required frequency, `challengeAbsent`, minority-overruled frequency, and a minority correctness proxy
 - Persists a full result bundle under `data/evals/`
 

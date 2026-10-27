@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { agentIds } from "./agents.js";
+import { agentIds, type AgentId } from "./agents.js";
+import { evidenceFindingSchema, type EvidenceBundle } from "../research/schemas.js";
 
 export const agentIdSchema = z.enum(agentIds);
 
@@ -8,8 +9,13 @@ export const claimSchema = z.object({
   statement: z.string().min(1),
   rationale: z.string().min(1),
   confidence: z.number().min(0).max(1),
-  risk: z.string().min(1)
+  risk: z.string().min(1),
+  evidenceIds: z.array(z.string().min(1)).max(3).default([])
 });
+
+export function namespaceClaimId(agentId: AgentId, index: number): string {
+  return `${agentId}:c${index + 1}`;
+}
 
 export const proposalSchema = z.object({
   agentId: agentIdSchema,
@@ -20,7 +26,13 @@ export const proposalSchema = z.object({
   assumptions: z.array(z.string().min(1)).min(1).max(4),
   risks: z.array(z.string().min(1)).min(1).max(4),
   confidence: z.number().min(0).max(1)
-});
+}).transform((proposal) => ({
+  ...proposal,
+  claims: proposal.claims.map((claim, index) => ({
+    ...claim,
+    id: namespaceClaimId(proposal.agentId, index)
+  }))
+}));
 
 export const critiqueSchema = z.object({
   agentId: agentIdSchema,
@@ -29,7 +41,8 @@ export const critiqueSchema = z.object({
   usefulAgreements: z.array(z.string().min(1)).max(3),
   concerns: z.array(z.string().min(1)).min(1).max(4),
   recommendation: z.string().min(1),
-  severity: z.enum(["low", "medium", "high"])
+  severity: z.enum(["low", "medium", "high"]),
+  evidenceFindings: z.array(evidenceFindingSchema).max(6).default([])
 });
 
 export const supportingClaimSchema = z.object({
@@ -41,12 +54,14 @@ export const supportingClaimSchema = z.object({
 });
 
 export const resolutionTraceItemSchema = z.object({
+  claimRef: z.string().min(1),
   statement: z.string().min(1),
   disposition: z.enum(["accepted", "monitor", "rejected"]),
   sourceAgents: z.array(agentIdSchema).min(1),
   challengedBy: z.array(agentIdSchema),
   score: z.number().min(0).max(1),
-  rationale: z.string().min(1)
+  rationale: z.string().min(1),
+  evidenceStatus: z.enum(["supported", "contradicted", "unsupported", "unchecked"])
 });
 
 export const deliberationViewpointSchema = z.object({
@@ -91,18 +106,23 @@ export const synthesisSchema = z.object({
 export const runRequestSchema = z.object({
   question: z.string().min(10).max(4000),
   context: z.string().max(12000).optional().default(""),
-  mode: z.enum(["mock", "live"]).optional()
+  mode: z.enum(["mock", "live", "ollama"]).optional(),
+  research: z.boolean().optional().default(false)
 });
 
 export const councilEventTypeSchema = z.enum([
   "run.started",
   "route.selected",
+  "research.started",
+  "research.completed",
+  "research.failed",
   "proposal.started",
   "proposal.delta",
   "proposal.completed",
   "critique.started",
   "critique.completed",
   "synthesis.started",
+  "synthesis.fallback",
   "synthesis.completed",
   "run.completed",
   "run.failed"
@@ -143,5 +163,6 @@ export type RunRecord = {
   proposals: Proposal[];
   critiques: Critique[];
   synthesis?: Synthesis;
+  evidence?: EvidenceBundle;
   error?: string;
 };
