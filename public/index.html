@@ -48,14 +48,16 @@
             </label>
             <div class="form-row">
               <label>
-                Mode
+                Provider
                 <select id="mode" name="mode">
                   <option value="mock">Mock</option>
                   <option value="live">Live</option>
+                  <option value="ollama">Ollama offline</option>
                 </select>
               </label>
               <button type="submit" id="submit-button">Start Council Run</button>
             </div>
+            <p id="ollama-note" class="ollama-note hidden">Ollama mode locks the chamber to three seats running locally: Strategist, Analyst, and Chaos Gremlin. Voxis sits out on local hardware.</p>
           </form>
         </section>
 

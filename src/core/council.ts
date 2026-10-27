@@ -21,7 +21,7 @@ export class CouncilService {
   async startRun(input: unknown): Promise<{ runId: string; mode: ProviderMode; agents: AgentId[] }> {
     const request = runRequestSchema.parse(input);
     const providers = createProviders(this.config, request.mode);
-    const mode = providers.every((provider) => provider.mode === "mock") ? "mock" : "live";
+    const mode = resolveRunMode(providers);
     const record = this.store.createRun({ ...request, mode });
 
     await this.store.appendEvent(record.runId, {
@@ -46,7 +46,7 @@ export class CouncilService {
   async runAndWait(input: unknown): Promise<RunRecord> {
     const request = runRequestSchema.parse(input);
     const providers = createProviders(this.config, request.mode);
-    const mode = providers.every((provider) => provider.mode === "mock") ? "mock" : "live";
+    const mode = resolveRunMode(providers);
     const record = this.store.createRun({ ...request, mode });
 
     await this.store.appendEvent(record.runId, {
@@ -296,6 +296,14 @@ export class CouncilService {
       await wait(40);
     }
   }
+}
+
+function resolveRunMode(providers: CouncilProvider[]): ProviderMode {
+  if (providers.every((provider) => provider.mode === "ollama")) {
+    return "ollama";
+  }
+
+  return providers.every((provider) => provider.mode === "mock") ? "mock" : "live";
 }
 
 function chooseJudgeProvider(providers: CouncilProvider[]): CouncilProvider {
