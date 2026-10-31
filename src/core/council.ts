@@ -11,12 +11,23 @@ import { createProviders, type RuntimeConfig } from "../providers/index.js";
 import { RunStore } from "../store/runStore.js";
 import { gather, stripUnknownEvidenceIds, stripUnknownFindings } from "../research/service.js";
 import type { EvidenceBundle } from "../research/schemas.js";
+import {
+  createVoxisContextClient,
+  loadSeatContexts,
+  moodDeltaForBand,
+  type VoxisContextClient
+} from "../providers/voxisContext.js";
 
 export class CouncilService {
+  private readonly voxis: VoxisContextClient;
+
   constructor(
     private readonly store: RunStore,
-    private readonly config: RuntimeConfig
-  ) {}
+    private readonly config: RuntimeConfig,
+    voxis: VoxisContextClient = createVoxisContextClient(config)
+  ) {
+    this.voxis = voxis;
+  }
 
   async startRun(input: unknown): Promise<{ runId: string; mode: ProviderMode; agents: AgentId[] }> {
     const request = runRequestSchema.parse(input);
@@ -88,16 +99,39 @@ export class CouncilService {
 
       const evidence = await this.gatherEvidence(runId, request, mode);
       let unknownEvidenceIdsStripped = 0;
+      const topic = [request.question, request.context].filter(Boolean).join("\n");
+      const voxisContexts = await loadSeatContexts(
+        this.voxis,
+        providers.map((provider) => provider.agentId),
+        topic,
+        mode === "ollama" && this.config.voxisContext
+      );
+
+      if (mode === "ollama") {
+        await this.store.appendEvent(runId, {
+          runId,
+          type: "voxis.context",
+          payload: {
+            seats: providers.map((provider) => ({
+              agentId: provider.agentId,
+              chars: (voxisContexts.get(provider.agentId) || "").length,
+              context: voxisContexts.get(provider.agentId) || ""
+            }))
+          }
+        });
+      }
 
       const proposals = await Promise.all(
         providers.map(async (provider) => {
+          const voxisContext = voxisContexts.get(provider.agentId) || "";
           await this.store.appendEvent(runId, {
             runId,
             type: "proposal.started",
             agentId: provider.agentId,
             payload: {
               providerName: provider.providerName,
-              modelName: provider.modelName
+              modelName: provider.modelName,
+              voxisContext
             }
           });
 
@@ -105,7 +139,8 @@ export class CouncilService {
             question: request.question,
             context: request.context,
             peers: providers.map((candidate) => candidate.agentId).filter((agentId) => agentId !== provider.agentId),
-            evidence
+            evidence,
+            voxisContext
           });
           const sanitized = stripUnknownEvidenceIds(proposed.claims, evidence);
           unknownEvidenceIdsStripped += sanitized.stripped;
@@ -212,6 +247,21 @@ export class CouncilService {
           synthesis
         }
       });
+
+      if (mode === "ollama" && this.config.voxisContext) {
+        void this.voxis.writeRound({
+          topic: request.question,
+          outcome: synthesis.finalAnswer,
+          moodDelta: moodDeltaForBand(synthesis.confidenceBand),
+          seats: providers.map((provider) => provider.agentId)
+        }).then((result) => {
+          void this.store.appendEvent(runId, {
+            runId,
+            type: "voxis.write",
+            payload: result
+          }).catch(() => undefined);
+        });
+      }
 
       await this.store.appendEvent(runId, {
         runId,

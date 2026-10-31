@@ -25,6 +25,12 @@ type OllamaProviderConfig = {
   systemPrompt: string;
 };
 
+export function composeSeatPrompt(systemPrompt: string, voxisContext?: string): string {
+  const block = String(voxisContext || "").trim();
+  if (!block) return systemPrompt;
+  return `${systemPrompt}\n\nPersona context:\n${block}`;
+}
+
 export function createOllamaProvider(config: OllamaProviderConfig): CouncilProvider {
   const modelName = MODEL_MAP[config.agentId];
 
@@ -40,7 +46,7 @@ export function createOllamaProvider(config: OllamaProviderConfig): CouncilProvi
 }
 
 async function propose(config: OllamaProviderConfig, modelName: string, input: ProposalInput): Promise<Proposal> {
-  const raw = await chat(config, modelName, [
+  const raw = await chat(config, modelName, composeSeatPrompt(config.systemPrompt, input.voxisContext), [
     "Task: propose.",
     "Return JSON with stance, summary, claims (2-4 items: id, statement, rationale, confidence 0-1, risk, evidenceIds), assumptions (1-4), risks (1-4), and confidence 0-1.",
     `Claim ids look like ${config.agentId}:c1.`,
@@ -60,7 +66,7 @@ async function propose(config: OllamaProviderConfig, modelName: string, input: P
 }
 
 async function critique(config: OllamaProviderConfig, modelName: string, input: CritiqueInput): Promise<Critique> {
-  const raw = await chat(config, modelName, [
+  const raw = await chat(config, modelName, config.systemPrompt, [
     "Task: critique the target proposal.",
     "Return JSON with challengedClaimIds, usefulAgreements, concerns, recommendation, severity (low, medium, or high), and evidenceFindings.",
     "Each evidenceFinding has claimId, evidenceId, and relation (supports, contradicts, or unrelated).",
@@ -80,7 +86,7 @@ async function critique(config: OllamaProviderConfig, modelName: string, input: 
 }
 
 async function synthesize(config: OllamaProviderConfig, modelName: string, input: SynthesisInput): Promise<Synthesis> {
-  const raw = await chat(config, modelName, [
+  const raw = await chat(config, modelName, config.systemPrompt, [
     "Task: synthesize one verdict.",
     "Dispositions stay accepted, monitor, or rejected. Do not invent another disposition.",
     "A contradicted claim cannot be accepted. Unsupported evidence pushes the claim toward monitor.",
@@ -99,7 +105,12 @@ async function synthesize(config: OllamaProviderConfig, modelName: string, input
   return synthesisSchema.parse(raw);
 }
 
-async function chat(config: OllamaProviderConfig, modelName: string, user: string): Promise<Record<string, unknown>> {
+async function chat(
+  config: OllamaProviderConfig,
+  modelName: string,
+  systemPrompt: string,
+  user: string
+): Promise<Record<string, unknown>> {
   const endpoint = `${config.baseUrl.replace(/\/$/, "")}/api/chat`;
   const response = await fetch(endpoint, {
     method: "POST",
@@ -109,7 +120,7 @@ async function chat(config: OllamaProviderConfig, modelName: string, user: strin
       stream: false,
       format: "json",
       messages: [
-        { role: "system", content: config.systemPrompt },
+        { role: "system", content: systemPrompt },
         { role: "user", content: user }
       ],
       options: {

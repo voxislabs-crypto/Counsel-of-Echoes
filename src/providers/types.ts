@@ -9,6 +9,7 @@ export type ProposalInput = {
   context: string;
   peers: AgentId[];
   evidence?: EvidenceBundle;
+  voxisContext?: string;
 };
 
 export type CritiqueInput = {

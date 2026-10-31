@@ -125,7 +125,9 @@ export const councilEventTypeSchema = z.enum([
   "synthesis.fallback",
   "synthesis.completed",
   "run.completed",
-  "run.failed"
+  "run.failed",
+  "voxis.context",
+  "voxis.write"
 ]);
 
 export const councilEventSchema = z.object({

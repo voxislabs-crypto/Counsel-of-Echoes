@@ -34,9 +34,9 @@ The next work should focus on the parts that most improve reasoning quality per 
 
 ## Voxis Integration
 
-1. Integrate Voxis as either a fourth proposal seat or a render-only personality layer.
-2. Keep Voxis out of truth resolution unless it is being evaluated as a real reasoning participant.
-3. Preserve the canonical synthesis object, then generate personality variants from that output.
+Voxis is a localhost context sidecar, not a seat. In ollama mode the orchestrator fetches one context block per seat before proposals, injects it into that seat's system prompt, and after synthesis fires a non-blocking `POST /api/internal/round`. Critique and synthesis do not call Voxis. A down sidecar yields empty context and the round still finishes.
+
+Bind seats with `VOXIS_SEAT_GPT`, `VOXIS_SEAT_CLAUDE`, and `VOXIS_SEAT_GROK` on the Voxis process. CoE reads `VOXIS_URL` (default `http://127.0.0.1:3101`). Set `VOXIS_CONTEXT=false` to skip the sidecar.
 
 ## Operational Notes
 

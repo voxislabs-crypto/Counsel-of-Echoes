@@ -19,6 +19,11 @@ export type RuntimeConfig = {
   xAiKey?: string;
   xAiModel: string;
   baselineAgent: AgentId;
+  voxisContext: boolean;
+  voxisUrl: string;
+  voxisSecret?: string;
+  voxisTimeoutMs: number;
+  voxisMaxChars: number;
 };
 
 export function readRuntimeConfig(): RuntimeConfig {
@@ -33,7 +38,12 @@ export function readRuntimeConfig(): RuntimeConfig {
     anthropicModel: process.env.ANTHROPIC_MODEL ?? "claude-3-7-sonnet-latest",
     xAiKey: process.env.XAI_API_KEY,
     xAiModel: process.env.XAI_MODEL ?? "grok-3-mini",
-    baselineAgent: readBaselineAgent(process.env.COE_BASELINE_AGENT)
+    baselineAgent: readBaselineAgent(process.env.COE_BASELINE_AGENT),
+    voxisContext: process.env.VOXIS_CONTEXT !== "false",
+    voxisUrl: process.env.VOXIS_URL ?? "http://127.0.0.1:3101",
+    voxisSecret: process.env.VOXIS_INTERNAL_SECRET,
+    voxisTimeoutMs: readBoundedInt(process.env.VOXIS_TIMEOUT_MS, 1200, 200, 4000),
+    voxisMaxChars: readBoundedInt(process.env.VOXIS_MAX_CHARS, 700, 500, 800)
   };
 }
 
@@ -112,6 +122,12 @@ function seatSystemPrompt(agentId: (typeof ollamaSeats)[number]): string {
     : "";
 
   return `You are ${profile.label}, seat ${profile.seat}. ${profile.role} Critique lens: ${profile.critiqueLens}.${voice}`;
+}
+
+function readBoundedInt(value: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(parsed)));
 }
 
 function readBaselineAgent(value: string | undefined): AgentId {
