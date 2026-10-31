@@ -17,6 +17,12 @@ import {
 } from "./schemas.js";
 import { chooseWinner, scoreBaseline, scoreCouncil } from "./score.js";
 
+export function formatMissingSynthesis(run: { runId: string; status: string; error?: string }): string {
+  const status = run.status === "completed" ? "failed" : run.status;
+  const detail = run.error ? `: ${run.error}` : "";
+  return `Council run ${run.runId} ${status} before synthesis${detail}`;
+}
+
 export class EvalService {
   constructor(
     private readonly council: CouncilService,
@@ -39,7 +45,7 @@ export class EvalService {
       });
 
       if (!councilRun.synthesis) {
-        throw new Error(`Council run ${councilRun.runId} completed without synthesis`);
+        throw new Error(formatMissingSynthesis(councilRun));
       }
 
       const baseline = await this.runBaseline(caseInput, mode, councilRun.evidence);

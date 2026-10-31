@@ -6,6 +6,7 @@ import {
   type Synthesis
 } from "./schemas.js";
 import { buildHeuristicJudgeSynthesis, buildResolutionTrace } from "./judge.js";
+import { settleSeatTasks } from "./proposalStage.js";
 import type { CouncilProvider, ProviderMode } from "../providers/types.js";
 import { createProviders, type RuntimeConfig } from "../providers/index.js";
 import { RunStore } from "../store/runStore.js";
@@ -121,87 +122,98 @@ export class CouncilService {
         });
       }
 
-      const proposals = await Promise.all(
-        providers.map(async (provider) => {
-          const voxisContext = voxisContexts.get(provider.agentId) || "";
-          await this.store.appendEvent(runId, {
-            runId,
-            type: "proposal.started",
-            agentId: provider.agentId,
-            payload: {
-              providerName: provider.providerName,
-              modelName: provider.modelName,
+      const proposals = await settleSeatTasks(
+        providers.map((provider) => ({
+          agentId: provider.agentId,
+          modelName: provider.modelName,
+          run: async () => {
+            const voxisContext = voxisContexts.get(provider.agentId) || "";
+            await this.store.appendEvent(runId, {
+              runId,
+              type: "proposal.started",
+              agentId: provider.agentId,
+              payload: {
+                providerName: provider.providerName,
+                modelName: provider.modelName,
+                voxisContext
+              }
+            });
+
+            const proposed = await provider.propose({
+              question: request.question,
+              context: request.context,
+              peers: providers.map((candidate) => candidate.agentId).filter((agentId) => agentId !== provider.agentId),
+              evidence,
               voxisContext
-            }
-          });
+            });
+            const sanitized = stripUnknownEvidenceIds(proposed.claims, evidence);
+            unknownEvidenceIdsStripped += sanitized.stripped;
+            const proposal = {
+              ...proposed,
+              claims: sanitized.claims
+            };
 
-          const proposed = await provider.propose({
-            question: request.question,
-            context: request.context,
-            peers: providers.map((candidate) => candidate.agentId).filter((agentId) => agentId !== provider.agentId),
-            evidence,
-            voxisContext
-          });
-          const sanitized = stripUnknownEvidenceIds(proposed.claims, evidence);
-          unknownEvidenceIdsStripped += sanitized.stripped;
-          const proposal = {
-            ...proposed,
-            claims: sanitized.claims
-          };
+            await this.streamText(runId, provider.agentId, proposal.summary);
+            await this.store.appendEvent(runId, {
+              runId,
+              type: "proposal.completed",
+              agentId: provider.agentId,
+              payload: {
+                proposal,
+                unknownEvidenceIdsStripped: sanitized.stripped
+              }
+            });
 
-          await this.streamText(runId, provider.agentId, proposal.summary);
-          await this.store.appendEvent(runId, {
-            runId,
-            type: "proposal.completed",
-            agentId: provider.agentId,
-            payload: {
-              proposal,
-              unknownEvidenceIdsStripped: sanitized.stripped
-            }
-          });
-
-          return proposal;
-        })
+            return proposal;
+          }
+        })),
+        "Proposal stage",
+        { sequential: mode === "ollama" }
       );
 
-      const critiques = await Promise.all(
-        providers.map(async (provider, index) => {
-          const target = proposals[(index + 1) % proposals.length];
-          await this.store.appendEvent(runId, {
-            runId,
-            type: "critique.started",
-            agentId: provider.agentId,
-            payload: {
-              targetAgentId: target.agentId
-            }
-          });
+      const critiques = await settleSeatTasks(
+        providers.map((provider, index) => ({
+          agentId: provider.agentId,
+          modelName: provider.modelName,
+          run: async () => {
+            const target = proposals[(index + 1) % proposals.length];
+            await this.store.appendEvent(runId, {
+              runId,
+              type: "critique.started",
+              agentId: provider.agentId,
+              payload: {
+                targetAgentId: target.agentId
+              }
+            });
 
-          const drafted = await provider.critique({
-            question: request.question,
-            context: request.context,
-            target,
-            peers: proposals.filter((proposal) => proposal.agentId !== provider.agentId),
-            evidence
-          });
-          const sanitizedFindings = stripUnknownFindings(drafted.evidenceFindings, evidence);
-          unknownEvidenceIdsStripped += sanitizedFindings.stripped;
-          const critique = {
-            ...drafted,
-            evidenceFindings: sanitizedFindings.findings
-          };
+            const drafted = await provider.critique({
+              question: request.question,
+              context: request.context,
+              target,
+              peers: proposals.filter((proposal) => proposal.agentId !== provider.agentId),
+              evidence
+            });
+            const sanitizedFindings = stripUnknownFindings(drafted.evidenceFindings, evidence);
+            unknownEvidenceIdsStripped += sanitizedFindings.stripped;
+            const critique = {
+              ...drafted,
+              evidenceFindings: sanitizedFindings.findings
+            };
 
-          await this.store.appendEvent(runId, {
-            runId,
-            type: "critique.completed",
-            agentId: provider.agentId,
-            payload: {
-              critique,
-              unknownEvidenceIdsStripped: sanitizedFindings.stripped
-            }
-          });
+            await this.store.appendEvent(runId, {
+              runId,
+              type: "critique.completed",
+              agentId: provider.agentId,
+              payload: {
+                critique,
+                unknownEvidenceIdsStripped: sanitizedFindings.stripped
+              }
+            });
 
-          return critique;
-        })
+            return critique;
+          }
+        })),
+        "Critique stage"
       );
 
       const judgeProvider = chooseJudgeProvider(providers);
