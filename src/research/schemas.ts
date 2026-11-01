@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const sourceKindSchema = z.enum(["wikipedia", "fixture"]);
+export const sourceKindSchema = z.enum(["wikipedia", "reddit", "fixture"]);
 
 export const evidenceItemSchema = z.object({
   id: z.string().min(1),
@@ -12,7 +12,7 @@ export const evidenceItemSchema = z.object({
 });
 
 export const evidenceBundleSchema = z.object({
-  items: z.array(evidenceItemSchema).max(3),
+  items: z.array(evidenceItemSchema).max(9),
   query: z.string(),
   status: z.enum(["ok", "partial", "empty"])
 });

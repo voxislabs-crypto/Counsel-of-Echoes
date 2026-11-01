@@ -1,5 +1,12 @@
+import { collectEvidenceItems, type EvidenceRetrieval } from "./collectEvidence.js";
 import { htmlToText, safeFetch } from "./safeFetch.js";
 import type { SearchLead, SearchProvider } from "./types.js";
+
+export type WikipediaClient = {
+  search?: (query: string) => Promise<SearchLead[]>;
+  excerpt?: (title: string) => Promise<string>;
+  now?: () => string;
+};
 
 const API_URL = "https://en.wikipedia.org/w/api.php";
 
@@ -60,4 +67,17 @@ export async function fetchWikipediaExcerpt(title: string): Promise<string> {
   }
 
   return extract;
+}
+
+// Strategist retrieval. Uses the Wikipedia client above. A failed search
+// returns no items so a down API does not fail the council run.
+export async function loadWikipediaEvidence(query: string, client?: WikipediaClient): Promise<EvidenceRetrieval> {
+  try {
+    const search = client?.search ?? ((value: string) => wikipediaSearch.search(value));
+    const excerpt = client?.excerpt ?? fetchWikipediaExcerpt;
+    const leads = await search(query);
+    return collectEvidenceItems(leads, "wikipedia", (lead) => excerpt(lead.title), client?.now);
+  } catch {
+    return { items: [], failed: 0 };
+  }
 }

@@ -25,12 +25,16 @@ export type SafeFetchResult = {
   text: string;
 };
 
-export async function safeFetch(rawUrl: string, parentSignal?: AbortSignal): Promise<SafeFetchResult> {
+export async function safeFetch(
+  rawUrl: string,
+  parentSignal?: AbortSignal,
+  headers?: Record<string, string>
+): Promise<SafeFetchResult> {
   let current = rawUrl;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const target = await assertPublicHttpUrl(current);
-    const response = await requestOnce(target, parentSignal);
+    const response = await requestOnce(target, parentSignal, { ...REQUEST_HEADERS, ...headers });
 
     if (response.status >= 300 && response.status < 400) {
       const location = response.location;
@@ -170,7 +174,11 @@ type FetchResponse = {
   body: string;
 };
 
-function requestOnce(target: VettedUrl, parentSignal?: AbortSignal): Promise<FetchResponse> {
+function requestOnce(
+  target: VettedUrl,
+  parentSignal: AbortSignal | undefined,
+  headers: Record<string, string>
+): Promise<FetchResponse> {
   const timeout = AbortSignal.timeout(TIMEOUT_MS);
   const signal = parentSignal ? AbortSignal.any([parentSignal, timeout]) : timeout;
   const lib = target.url.protocol === "https:" ? https : http;
@@ -183,7 +191,7 @@ function requestOnce(target: VettedUrl, parentSignal?: AbortSignal): Promise<Fet
       port: target.url.port || undefined,
       path: `${target.url.pathname}${target.url.search}`,
       method: "GET",
-      headers: REQUEST_HEADERS,
+      headers,
       servername: target.url.hostname,
       lookup: (_hostname, _options, callback) => {
         callback(null, target.address, family);

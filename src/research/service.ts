@@ -1,15 +1,14 @@
 import type { ProviderMode } from "../providers/types.js";
-import { fetchWikipediaExcerpt, wikipediaSearch } from "./wikipedia.js";
+import { collectEvidenceItems, type EvidenceRetrieval } from "./collectEvidence.js";
 import { fixtureSearch } from "./fixtureProvider.js";
-import { clampExcerpt } from "./safeFetch.js";
+import type { RedditClient } from "./reddit.js";
+import { sourceAdapterFor, type SourceClients } from "./seatSources.js";
 import {
   evidenceBundleSchema,
   type EvidenceBundle,
-  type EvidenceFinding,
-  type EvidenceItem,
-  type SourceKind
+  type EvidenceFinding
 } from "./schemas.js";
-import type { SearchProvider } from "./types.js";
+import type { WikipediaClient } from "./wikipedia.js";
 
 const EMPTY = (query: string): EvidenceBundle => ({
   items: [],
@@ -17,51 +16,78 @@ const EMPTY = (query: string): EvidenceBundle => ({
   status: "empty"
 });
 
-export async function gather(input: { query: string; mode: ProviderMode }): Promise<EvidenceBundle> {
+export function researchRequested(research: boolean | undefined): boolean {
+  return research === true;
+}
+
+export async function gatherForRun(input: {
+  research: boolean;
+  query: string;
+  mode: ProviderMode;
+  wikipedia?: WikipediaClient;
+  reddit?: RedditClient;
+}): Promise<EvidenceBundle | undefined> {
+  if (!researchRequested(input.research)) return undefined;
+  return gather(input);
+}
+
+export async function gather(input: {
+  query: string;
+  mode: ProviderMode;
+  wikipedia?: WikipediaClient;
+  reddit?: RedditClient;
+}): Promise<EvidenceBundle> {
   try {
-    const useFixture = input.mode === "mock";
-    const provider: SearchProvider = useFixture ? fixtureSearch : wikipediaSearch;
-    const sourceKind: SourceKind = useFixture ? "fixture" : "wikipedia";
-    const leads = await provider.search(input.query);
-
-    if (leads.length === 0) {
-      return EMPTY(input.query);
-    }
-
-    const items: EvidenceItem[] = [];
-    let failures = 0;
-
-    for (const [index, lead] of leads.slice(0, 3).entries()) {
-      try {
-        const rawExcerpt = sourceKind === "fixture" ? lead.snippet : await fetchWikipediaExcerpt(lead.title);
-        const excerpt = clampExcerpt(rawExcerpt);
-        if (!excerpt) {
-          failures += 1;
-          continue;
-        }
-
-        items.push({
-          id: `${sourceKind}:${index + 1}`,
-          sourceUrl: lead.url,
-          retrievedAt: new Date().toISOString(),
-          title: lead.title,
-          excerpt,
-          sourceKind
-        });
-      } catch {
-        failures += 1;
-      }
-    }
-
-    const status = items.length === 0 ? "empty" : failures > 0 ? "partial" : "ok";
-    return evidenceBundleSchema.parse({
-      items,
-      query: input.query,
-      status
-    });
+    const retrieval = input.mode === "mock"
+      ? await loadFixtureEvidence(input.query)
+      : await loadLiveEvidence(input.query, {
+        wikipedia: input.wikipedia,
+        reddit: input.reddit
+      });
+    return bundleFromRetrieval(input.query, retrieval);
   } catch {
     return EMPTY(input.query);
   }
+}
+
+async function loadFixtureEvidence(query: string): Promise<EvidenceRetrieval> {
+  const leads = await fixtureSearch.search(query);
+  return collectEvidenceItems(leads, "fixture", async (lead) => lead.snippet);
+}
+
+async function loadLiveEvidence(query: string, clients: SourceClients): Promise<EvidenceRetrieval> {
+  const [wikipedia, reddit] = await Promise.all([
+    settleRetrieval(() => loadSeatEvidence("gpt", query, clients)),
+    settleRetrieval(() => loadSeatEvidence("grok", query, clients))
+  ]);
+  return {
+    items: [...wikipedia.items, ...reddit.items],
+    failed: wikipedia.failed + reddit.failed
+  };
+}
+
+async function loadSeatEvidence(seat: "gpt" | "grok", query: string, clients: SourceClients): Promise<EvidenceRetrieval> {
+  const adapter = sourceAdapterFor(seat);
+  if (!adapter) return { items: [], failed: 0 };
+  return adapter.retrieve(query, clients);
+}
+
+async function settleRetrieval(run: () => Promise<EvidenceRetrieval>): Promise<EvidenceRetrieval> {
+  try {
+    return await run();
+  } catch {
+    return { items: [], failed: 0 };
+  }
+}
+
+function bundleFromRetrieval(query: string, retrieval: EvidenceRetrieval): EvidenceBundle {
+  if (retrieval.items.length === 0) return EMPTY(query);
+  const status = retrieval.failed > 0 ? "partial" : "ok";
+  return evidenceBundleSchema.parse({
+    items: retrieval.items,
+    query,
+    status
+  });
 }
 
 export function renderEvidenceData(bundle?: EvidenceBundle): string {

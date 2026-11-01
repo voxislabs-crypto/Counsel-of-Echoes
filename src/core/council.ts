@@ -10,7 +10,7 @@ import { settleSeatTasks } from "./proposalStage.js";
 import type { CouncilProvider, ProviderMode } from "../providers/types.js";
 import { createProviders, type RuntimeConfig } from "../providers/index.js";
 import { RunStore } from "../store/runStore.js";
-import { gather, stripUnknownEvidenceIds, stripUnknownFindings } from "../research/service.js";
+import { gatherForRun, researchRequested, stripUnknownEvidenceIds, stripUnknownFindings } from "../research/service.js";
 import type { EvidenceBundle } from "../research/schemas.js";
 import {
   createVoxisContextClient,
@@ -297,7 +297,7 @@ export class CouncilService {
   }
 
   private async gatherEvidence(runId: string, request: RunRequest, mode: ProviderMode): Promise<EvidenceBundle | undefined> {
-    if (!request.research) {
+    if (!researchRequested(request.research)) {
       return undefined;
     }
 
@@ -309,10 +309,14 @@ export class CouncilService {
       }
     });
 
-    const evidence = await gather({
+    const evidence = await gatherForRun({
+      research: true,
       query: request.question,
       mode
     });
+    if (!evidence) {
+      return undefined;
+    }
     await this.store.setEvidence(runId, evidence);
 
     if (evidence.status === "empty") {
