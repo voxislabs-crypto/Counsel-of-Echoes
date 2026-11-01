@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const sourceKindSchema = z.enum(["wikipedia", "reddit", "fixture"]);
+export const sourceKindSchema = z.enum(["wikipedia", "reddit", "scholar", "fixture"]);
 
 export const evidenceItemSchema = z.object({
   id: z.string().min(1),

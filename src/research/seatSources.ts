@@ -1,12 +1,14 @@
 import type { AgentId } from "../core/agents.js";
 import type { EvidenceRetrieval } from "./collectEvidence.js";
 import { loadRedditEvidence, type RedditClient } from "./reddit.js";
+import { loadScholarEvidence, type ScholarClient } from "./scholar.js";
 import type { SourceKind } from "./schemas.js";
 import { loadWikipediaEvidence, type WikipediaClient } from "./wikipedia.js";
 
 export type SourceClients = {
   wikipedia?: WikipediaClient;
   reddit?: RedditClient;
+  scholar?: ScholarClient;
 };
 
 export type SeatSourceAdapter = {
@@ -15,13 +17,21 @@ export type SeatSourceAdapter = {
   retrieve(query: string, clients?: SourceClients): Promise<EvidenceRetrieval>;
 };
 
-// The Strategist reads Wikipedia. The Chaos Gremlin reads Reddit.
-// The Analyst has no source yet and reads this same shared bundle.
+// The Strategist reads Wikipedia, the Analyst reads Semantic Scholar,
+// and the Chaos Gremlin reads Reddit. One research-on run shares all three.
 export const strategistSource: SeatSourceAdapter = {
   seat: "gpt",
   sourceKind: "wikipedia",
   retrieve(query, clients) {
     return loadWikipediaEvidence(query, clients?.wikipedia);
+  }
+};
+
+export const analystSource: SeatSourceAdapter = {
+  seat: "claude",
+  sourceKind: "scholar",
+  retrieve(query, clients) {
+    return loadScholarEvidence({ query, client: clients?.scholar });
   }
 };
 
@@ -35,6 +45,7 @@ export const gremlinSource: SeatSourceAdapter = {
 
 const adapters: Partial<Record<SeatSourceAdapter["seat"], SeatSourceAdapter>> = {
   gpt: strategistSource,
+  claude: analystSource,
   grok: gremlinSource
 };
 

@@ -10,7 +10,7 @@ The next research work is heterogeneous evidence. Evaluation, routing, and UI wo
 
 Research runs only when the request sets `research: true`. A research-off run skips gathering, and that path has to keep succeeding.
 
-When research is on, `gather()` runs once after routing and before proposals. The query is the question. Mock mode uses fixtures. Ollama and live call the Strategist Wikipedia adapter and the Chaos Gremlin Reddit adapter, then put both results in one shared bundle. Each adapter returns at most 3 items. The bundle holds at most 9. Each item has an id, title, source URL, and an excerpt of at most 800 characters. `sourceKind` is `wikipedia`, `reddit`, or `fixture`. Unknown evidence ids are stripped. An empty search is recorded and the round continues. `evidenceId` on a finding stays a required string. A null id is filled only from a source the finding or its claim already names.
+When research is on, `gather()` runs once after routing and before proposals. The query is the question. Mock mode uses fixtures. Ollama and live call the Strategist Wikipedia adapter, the Chaos Gremlin Reddit adapter, and the Analyst Semantic Scholar adapter, then put the results in one shared bundle in that order. Each adapter returns at most 3 items. The bundle holds at most 9. Each item has an id, title, source URL, and an excerpt of at most 800 characters. `sourceKind` is `wikipedia`, `reddit`, `scholar`, or `fixture`. Unknown evidence ids are stripped. An empty search is recorded and the round continues. `evidenceId` on a finding stays a required string. A null id is filled only from a source the finding or its claim already names.
 
 Seats stay gpt → llama3.1:8b (Strategist), claude → mistral:7b (Analyst), grok → qwen2.5:7b (Chaos Gremlin).
 
@@ -55,7 +55,7 @@ After one run has used all three sources, try a second critique round. The defau
 
 1. Wikipedia adapter assigned to the Strategist, with research on. In `src/research/seatSources.ts`. A research-on run fills the shared bundle from that adapter. Analyst and Gremlin still read the same bundle.
 2. Reddit adapter for the Gremlin, with the same check. In `src/research/reddit.ts`, assigned in `src/research/seatSources.ts`. A research-on run appends those items to the shared bundle. The default subreddits are r/changemyview, r/AskHistorians, and r/explainlikeimfive.
-3. Scholar adapter for the Analyst.
+3. Scholar adapter for the Analyst. In `src/research/scholar.ts`, assigned in `src/research/seatSources.ts`. A research-on run appends those items after Wikipedia and Reddit. The client is the public Semantic Scholar graph search. No API key.
 4. One three-source run, then a decision on the second critique round.
 
 ## Evaluation

@@ -15,12 +15,17 @@ const quietReddit = {
   search: async () => []
 };
 
-test("the strategist reads wikipedia and the gremlin reads reddit", () => {
+const quietScholar = {
+  search: async () => []
+};
+
+test("each seat reads its own source", () => {
   assert.equal(sourceAdapterFor("gpt")?.seat, "gpt");
   assert.equal(sourceAdapterFor("gpt")?.sourceKind, "wikipedia");
+  assert.equal(sourceAdapterFor("claude")?.seat, "claude");
+  assert.equal(sourceAdapterFor("claude")?.sourceKind, "scholar");
   assert.equal(sourceAdapterFor("grok")?.seat, "grok");
   assert.equal(sourceAdapterFor("grok")?.sourceKind, "reddit");
-  assert.equal(sourceAdapterFor("claude"), undefined);
   assert.equal(sourceAdapterFor("voxis"), undefined);
 });
 
@@ -94,7 +99,8 @@ test("research on fills the shared bundle from the strategist adapter", async ()
       },
       excerpt: async () => "Reliability is the chance a seat finishes its answer."
     },
-    reddit: quietReddit
+    reddit: quietReddit,
+    scholar: quietScholar
   });
 
   assert.equal(bundle.status, "ok");
@@ -113,7 +119,8 @@ test("a wikipedia failure during research on leaves an empty bundle", async () =
         throw new Error("Wikipedia unavailable");
       }
     },
-    reddit: quietReddit
+    reddit: quietReddit,
+    scholar: quietScholar
   });
 
   assert.equal(bundle.status, "empty");
@@ -135,7 +142,8 @@ test("a partial wikipedia retrieval keeps the items that succeeded", async () =>
         return "Kept excerpt from the article.";
       }
     },
-    reddit: quietReddit
+    reddit: quietReddit,
+    scholar: quietScholar
   });
 
   assert.equal(bundle.status, "partial");
@@ -155,6 +163,11 @@ test("mock research still uses fixtures and does not call wikipedia", async () =
     reddit: {
       search: async () => {
         throw new Error("Reddit must not be called in mock mode");
+      }
+    },
+    scholar: {
+      search: async () => {
+        throw new Error("Semantic Scholar must not be called in mock mode");
       }
     }
   });

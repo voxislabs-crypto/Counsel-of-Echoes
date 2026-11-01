@@ -137,7 +137,8 @@ test("reddit results join the shared bundle and a reddit failure leaves wikipedi
       nowMs,
       search: async () => [post()],
       comments: async () => []
-    }
+    },
+    scholar: { search: async () => [] }
   });
 
   assert.equal(both.status, "ok");
@@ -162,7 +163,8 @@ test("reddit results join the shared bundle and a reddit failure leaves wikipedi
       search: async () => {
         throw new Error("Reddit unavailable");
       }
-    }
+    },
+    scholar: { search: async () => [] }
   });
 
   assert.equal(wikipediaOnly.status, "ok");

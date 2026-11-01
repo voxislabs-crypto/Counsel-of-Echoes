@@ -2,6 +2,7 @@ import type { ProviderMode } from "../providers/types.js";
 import { collectEvidenceItems, type EvidenceRetrieval } from "./collectEvidence.js";
 import { fixtureSearch } from "./fixtureProvider.js";
 import type { RedditClient } from "./reddit.js";
+import type { ScholarClient } from "./scholar.js";
 import { sourceAdapterFor, type SourceClients } from "./seatSources.js";
 import {
   evidenceBundleSchema,
@@ -26,6 +27,7 @@ export async function gatherForRun(input: {
   mode: ProviderMode;
   wikipedia?: WikipediaClient;
   reddit?: RedditClient;
+  scholar?: ScholarClient;
 }): Promise<EvidenceBundle | undefined> {
   if (!researchRequested(input.research)) return undefined;
   return gather(input);
@@ -36,13 +38,15 @@ export async function gather(input: {
   mode: ProviderMode;
   wikipedia?: WikipediaClient;
   reddit?: RedditClient;
+  scholar?: ScholarClient;
 }): Promise<EvidenceBundle> {
   try {
     const retrieval = input.mode === "mock"
       ? await loadFixtureEvidence(input.query)
       : await loadLiveEvidence(input.query, {
         wikipedia: input.wikipedia,
-        reddit: input.reddit
+        reddit: input.reddit,
+        scholar: input.scholar
       });
     return bundleFromRetrieval(input.query, retrieval);
   } catch {
@@ -56,17 +60,18 @@ async function loadFixtureEvidence(query: string): Promise<EvidenceRetrieval> {
 }
 
 async function loadLiveEvidence(query: string, clients: SourceClients): Promise<EvidenceRetrieval> {
-  const [wikipedia, reddit] = await Promise.all([
+  const [wikipedia, reddit, scholar] = await Promise.all([
     settleRetrieval(() => loadSeatEvidence("gpt", query, clients)),
-    settleRetrieval(() => loadSeatEvidence("grok", query, clients))
+    settleRetrieval(() => loadSeatEvidence("grok", query, clients)),
+    settleRetrieval(() => loadSeatEvidence("claude", query, clients))
   ]);
   return {
-    items: [...wikipedia.items, ...reddit.items],
-    failed: wikipedia.failed + reddit.failed
+    items: [...wikipedia.items, ...reddit.items, ...scholar.items],
+    failed: wikipedia.failed + reddit.failed + scholar.failed
   };
 }
 
-async function loadSeatEvidence(seat: "gpt" | "grok", query: string, clients: SourceClients): Promise<EvidenceRetrieval> {
+async function loadSeatEvidence(seat: "gpt" | "claude" | "grok", query: string, clients: SourceClients): Promise<EvidenceRetrieval> {
   const adapter = sourceAdapterFor(seat);
   if (!adapter) return { items: [], failed: 0 };
   return adapter.retrieve(query, clients);
