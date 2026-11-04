@@ -10,11 +10,11 @@ The next research work is heterogeneous evidence. Evaluation, routing, and UI wo
 
 Research runs only when the request sets `research: true`. A research-off run skips gathering, and that path has to keep succeeding.
 
-When research is on, `gather()` runs once after routing and before proposals. The query is the question. Mock mode uses fixtures. Ollama and live call the Strategist Wikipedia adapter, the Chaos Gremlin Reddit adapter, and the Analyst Semantic Scholar adapter, then put the results in one shared bundle in that order. Each adapter returns at most 3 items. The bundle holds at most 9. Each item has an id, title, source URL, and an excerpt of at most 800 characters. `sourceKind` is `wikipedia`, `reddit`, `scholar`, or `fixture`. Unknown evidence ids are stripped. An empty search is recorded and the round continues. `evidenceId` on a finding stays a required string. A null id is filled only from a source the finding or its claim already names.
+When research is on, proposals run first. `gather()` then runs once. The query is the question plus that seat's own claim statements. A seat with no claims searches the question. Mock mode uses fixtures. Ollama and live call the Strategist Wikipedia adapter, the Chaos Gremlin Reddit adapter, and the Analyst Semantic Scholar adapter, then put the results in one shared bundle in that order. Each adapter returns at most 3 items. The bundle holds at most 9. Each item has an id, title, source URL, and an excerpt of at most 800 characters. `sourceKind` is `wikipedia`, `reddit`, `scholar`, or `fixture`. Unknown evidence ids are stripped. An empty search is recorded and the round continues. `evidenceId` on a finding stays a required string. A null id is filled only from a source the finding or its claim already names.
 
 Seats stay gpt → llama3.1:8b (Strategist), claude → mistral:7b (Analyst), grok → qwen2.5:7b (Chaos Gremlin).
 
-The current bundle is shared and is collected before any seat has claims. Retrieval that needs proposal claims is a second pass after proposals. The pre-proposal gather stays until that pass replaces it.
+The bundle is shared. Each adapter searches the question together with that seat's claim statements. Run context and Voxis text stay local.
 
 ## External sources
 
@@ -41,7 +41,7 @@ Guardrails for this phase:
 
 When research is on, call the adapters and normalize their packets into the evidence bundle. `evidenceFindingSchema` stays as it is. The shared cap of 3 items rises to at most 9, three per seat, and `sourceKind` gains scholar and reddit values. Critique prompts already tell models to copy `evidenceId` from the bundle.
 
-The claim-aware call runs after proposals exist. Until then, an adapter may run on the question alone in the current pre-proposal slot.
+The claim-aware call runs after proposals exist. A seat with no claim statements searches the question alone.
 
 ### Phase 3 — Seat-specific retrieval
 
@@ -57,6 +57,10 @@ After one run has used all three sources, try a second critique round. The defau
 2. Reddit adapter for the Gremlin, with the same check. In `src/research/reddit.ts`, assigned in `src/research/seatSources.ts`. A research-on run appends those items to the shared bundle. The default subreddits are r/changemyview, r/AskHistorians, and r/explainlikeimfive.
 3. Scholar adapter for the Analyst. In `src/research/scholar.ts`, assigned in `src/research/seatSources.ts`. A research-on run appends those items after Wikipedia and Reddit. The client is the public Semantic Scholar graph search. No API key.
 4. One three-source run, then a decision on the second critique round.
+
+## Code review
+
+Code reading is not a research adapter. A run can set `lens` to `code` and paste the snippet into context. Proposal, critique, and synthesis prompts then ask for one concrete implementation, a challenge when another pattern is stronger, and a verdict that records the competing choices. The output schemas stay the same. File access waits until those prompts show real technical disagreement.
 
 ## Evaluation
 

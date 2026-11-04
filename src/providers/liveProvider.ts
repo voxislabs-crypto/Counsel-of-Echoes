@@ -1,7 +1,10 @@
 import { agentProfiles, type AgentId } from "../core/agents.js";
-import { critiqueSchema, proposalSchema, synthesisSchema, type Critique, type Proposal, type Synthesis } from "../core/schemas.js";
+import { synthesisSchema, type Critique, type Proposal, type Synthesis } from "../core/schemas.js";
+import { recoverCritique } from "./critiqueOutput.js";
+import { recoverProposal } from "./proposalOutput.js";
 import type { CouncilProvider, CritiqueInput, ProposalInput, SynthesisInput } from "./types.js";
 import { renderEvidenceData } from "../research/service.js";
+import { codeLensLines } from "./codeLens.js";
 
 type LiveProviderKind = "openai" | "anthropic" | "xai";
 
@@ -64,17 +67,20 @@ export class LiveProvider implements CouncilProvider {
       input.context ? `Context: ${input.context}` : "Context: none provided",
       `Other seats present: ${input.peers.join(", ")}`,
       renderEvidenceData(input.evidence),
+      ...codeLensLines("proposal", input.lens),
       "Give 2 to 4 concrete claims. Keep them concise and falsifiable.",
+      "confidence is your own number from 0 to 1. Do not omit it and do not use a placeholder.",
       `Use claim ids ${this.agentId}:c1, ${this.agentId}:c2, and so on.`,
       "Cite at most 3 evidence ids copied from the bundle. You have no tools."
     ].join("\n");
 
     const raw = await this.requestJson(system, user);
 
-    return proposalSchema.parse({
-      ...raw,
-      agentId: this.agentId,
-      model: this.modelName
+    return recoverProposal(this.agentId, this.modelName, raw, (request) => {
+      return this.requestJson(system, request.prompt);
+    }, {
+      question: input.question,
+      onTrace: input.onOutputTrace
     });
   }
 
@@ -114,17 +120,23 @@ export class LiveProvider implements CouncilProvider {
       `Target proposal: ${JSON.stringify(input.target)}`,
       `Peer summaries: ${JSON.stringify(input.peers.map((peer) => ({ agentId: peer.agentId, summary: peer.summary })))} `,
       renderEvidenceData(input.evidence),
+      ...codeLensLines("critique", input.lens),
       "Challenge weak logic, preserve strong ideas, and avoid rewriting the whole answer.",
       "Record evidenceFindings that relate a claim id to an evidence id as supports, contradicts, or unrelated. You have no tools."
     ].join("\n");
 
     const raw = await this.requestJson(system, user);
 
-    return critiqueSchema.parse({
-      ...raw,
-      agentId: this.agentId,
-      targetAgentId: input.target.agentId
-    });
+    return recoverCritique(this.agentId, this.modelName, raw, {
+      evidence: input.evidence,
+      claims: input.target.claims.map((claim) => ({
+        id: claim.id,
+        evidenceIds: claim.evidenceIds
+      })),
+      targetAgentId: input.target.agentId,
+      question: input.question,
+      onTrace: input.onOutputTrace
+    }, (request) => this.requestJson(system, request.prompt));
   }
 
   async synthesize(input: SynthesisInput): Promise<Synthesis> {
@@ -204,6 +216,7 @@ export class LiveProvider implements CouncilProvider {
       `Proposals: ${JSON.stringify(input.proposals)}`,
       `Critiques: ${JSON.stringify(input.critiques)}`,
       `Current resolutionTrace: ${JSON.stringify(input.resolutionTrace)}`,
+      ...codeLensLines("synthesis", input.lens),
       renderEvidenceData(input.evidence),
       "Build a concise but explicit synthesis with viewpoints, agreement check, vote rule, final decision, and decision rationale.",
       "A contradicted claim cannot be accepted. Unsupported evidence pushes the claim toward monitor. You have no tools."

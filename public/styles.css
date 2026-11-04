@@ -189,6 +189,18 @@ select:focus {
   align-items: end;
 }
 
+.check-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.check-row input {
+  margin-top: 3px;
+}
+
 .ollama-note {
   margin: 0;
   color: var(--muted);
@@ -244,6 +256,14 @@ button:disabled {
   transform: translateY(-2px);
   border-color: rgba(255, 255, 255, 0.18);
   box-shadow: 0 22px 48px var(--agent-shadow);
+}
+
+.agent-card.failed {
+  border-color: rgba(217, 93, 57, 0.85);
+}
+
+.agent-card.failed .agent-copy {
+  color: #f0b4a4;
 }
 
 .agent-head {

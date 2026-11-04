@@ -1,5 +1,7 @@
 import type { AgentId } from "../core/agents.js";
 import type { Critique, Proposal, ResolutionTraceItem, Synthesis } from "../core/schemas.js";
+import type { CouncilLens } from "./codeLens.js";
+import type { OutputTrace } from "./outputRecovery.js";
 import type { EvidenceBundle } from "../research/schemas.js";
 
 export type ProviderMode = "mock" | "live" | "ollama";
@@ -10,6 +12,8 @@ export type ProposalInput = {
   peers: AgentId[];
   evidence?: EvidenceBundle;
   voxisContext?: string;
+  lens?: CouncilLens;
+  onOutputTrace?: (trace: OutputTrace) => void;
 };
 
 export type CritiqueInput = {
@@ -18,6 +22,8 @@ export type CritiqueInput = {
   target: Proposal;
   peers: Proposal[];
   evidence?: EvidenceBundle;
+  lens?: CouncilLens;
+  onOutputTrace?: (trace: OutputTrace) => void;
 };
 
 export type SynthesisInput = {
@@ -27,6 +33,7 @@ export type SynthesisInput = {
   critiques: Critique[];
   resolutionTrace: ResolutionTraceItem[];
   evidence?: EvidenceBundle;
+  lens?: CouncilLens;
 };
 
 export interface CouncilProvider {

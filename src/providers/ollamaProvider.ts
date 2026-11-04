@@ -6,18 +6,19 @@ import {
   type Proposal,
   type Synthesis
 } from "../core/schemas.js";
-import { resolveEvidenceFindings } from "../research/evidenceFindings.js";
+import { resolveEvidenceFindings, type ClaimEvidenceRef } from "../research/evidenceFindings.js";
+import type { EvidenceBundle } from "../research/schemas.js";
 import { renderEvidenceData } from "../research/service.js";
+import { codeLensLines } from "./codeLens.js";
 import { requestOllamaChat } from "./ollamaChat.js";
+import { normalizeCritiqueRecord, resolveCritiqueTargetAgentId } from "./critiqueNormalize.js";
+import { critiqueFieldLines, recoverCritique } from "./critiqueOutput.js";
 import { normalizeProposalRecord } from "./proposalNormalize.js";
-import { mergeRepairedClaims, validClaims } from "./proposalRepair.js";
+import { StructuredOutputError } from "./outputRecovery.js";
+import { claimContractLines, proposalFieldLines, recoverProposal } from "./proposalOutput.js";
 import type { CouncilProvider, CritiqueInput, ProposalInput, SynthesisInput } from "./types.js";
 
-export const claimContractLines = [
-  "claims must contain at least two distinct, substantive, independently assessable assertions.",
-  "Do not split one assertion into two merely to meet the minimum.",
-  "If evidence is limited, express uncertainty rather than inventing claims."
-] as const;
+export { claimContractLines, proposalFieldLines, recoverProposal as resolveOllamaProposal };
 
 const MODEL_MAP = {
   gpt: "llama3.1:8b",
@@ -59,15 +60,14 @@ async function propose(config: OllamaProviderConfig, modelName: string, input: P
   try {
     const systemPrompt = composeSeatPrompt(config.systemPrompt, input.voxisContext);
     const raw = await chat(config, modelName, systemPrompt, buildProposalPrompt(config.agentId, input));
-    return await resolveOllamaProposal(config.agentId, modelName, raw, async ({ missing, existingClaims }) => {
-      return chat(config, modelName, systemPrompt, buildClaimRepairPrompt({
-        question: input.question,
-        summary: typeof raw.summary === "string" ? raw.summary : undefined,
-        missing,
-        existingClaims
-      }));
+    return await recoverProposal(config.agentId, modelName, raw, async (request) => {
+      return chat(config, modelName, systemPrompt, request.prompt);
+    }, {
+      question: input.question,
+      onTrace: input.onOutputTrace
     });
   } catch (error) {
+    if (error instanceof StructuredOutputError) throw error;
     throw proposalFailure(config.agentId, modelName, error);
   }
 }
@@ -76,6 +76,8 @@ export function buildProposalPrompt(agentId: string, input: ProposalInput): stri
   return [
     "Task: propose.",
     "Return JSON with stance, summary, claims (2-4 items: id, statement, rationale, confidence 0-1, risk, evidenceIds), assumptions, risks, and confidence 0-1.",
+    ...proposalFieldLines,
+    ...codeLensLines("proposal", input.lens),
     ...claimContractLines,
     "assumptions is an array of 1 to 4 plain strings. Each entry is one sentence, not an object.",
     "risks is an array of 1 to 4 plain strings. Each entry is one sentence, not an object.",
@@ -109,53 +111,45 @@ export function buildClaimRepairPrompt(input: {
   ].filter(Boolean).join("\n");
 }
 
-export async function resolveOllamaProposal(
+export function parseOllamaCritique(
   agentId: OllamaSeat,
   modelName: string,
   raw: Record<string, unknown>,
-  repair: (request: { missing: number; existingClaims: Record<string, unknown>[] }) => Promise<unknown>
-): Promise<Proposal> {
-  const firstCount = Array.isArray(raw.claims) ? raw.claims.length : null;
-
-  if (firstCount !== null && firstCount < 2) {
-    const existingClaims = validClaims(raw.claims);
-    const missing = 2 - existingClaims.length;
-    let merged: Record<string, unknown>;
-    try {
-      merged = mergeRepairedClaims(raw, await repair({ missing, existingClaims }));
-    } catch (error) {
-      throw labelAttempt(agentId, modelName, "after repair", error, firstCount);
-    }
-
-    try {
-      return parseOllamaProposal(agentId, modelName, merged);
-    } catch (error) {
-      throw labelAttempt(agentId, modelName, "after repair", error, firstCount);
-    }
-  }
-
+  evidenceFindings: unknown,
+  critiquedSeat?: string
+): Critique {
   try {
-    return parseOllamaProposal(agentId, modelName, raw);
+    return critiqueSchema.parse({
+      ...normalizeCritiqueRecord(raw),
+      evidenceFindings,
+      agentId,
+      targetAgentId: resolveCritiqueTargetAgentId(raw.targetAgentId, critiquedSeat)
+    });
   } catch (error) {
-    throw labelAttempt(agentId, modelName, "on the first attempt", error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes(`for ${agentId} (${modelName})`)) {
+      throw error instanceof Error ? error : new Error(message);
+    }
+    throw new Error(`Critique failed for ${agentId} (${modelName}): ${message}`);
   }
 }
 
-function labelAttempt(
-  agentId: string,
+export function assembleOllamaCritique(
+  agentId: OllamaSeat,
   modelName: string,
-  when: "on the first attempt" | "after repair",
-  error: unknown,
-  firstCount?: number
-): Error {
-  const prefix = `Proposal failed for ${agentId} (${modelName}): `;
-  let message = error instanceof Error ? error.message : String(error);
-  if (message.startsWith(prefix)) message = message.slice(prefix.length);
-  message = message.replace(/^(?:on the first attempt|after repair(?: \(first attempt had \d+ claim\(s\)\))?): /, "");
-  const where = when === "after repair"
-    ? `after repair (first attempt had ${firstCount ?? 0} claim(s))`
-    : "on the first attempt";
-  return proposalFailure(agentId, modelName, new Error(`${where}: ${message}`));
+  raw: Record<string, unknown>,
+  input: {
+    evidence?: EvidenceBundle;
+    claims: ClaimEvidenceRef[];
+    targetAgentId?: string;
+  }
+): Critique {
+  const evidenceFindings = resolveEvidenceFindings(raw.evidenceFindings, input.evidence, {
+    seat: agentId,
+    model: modelName,
+    claims: input.claims
+  });
+  return parseOllamaCritique(agentId, modelName, raw, evidenceFindings, input.targetAgentId);
 }
 
 export function parseOllamaProposal(agentId: OllamaSeat, modelName: string, raw: Record<string, unknown>): Proposal {
@@ -177,36 +171,52 @@ function proposalFailure(agentId: string, modelName: string, error: unknown): Er
   return new Error(`${prefix}${message}`);
 }
 
-async function critique(config: OllamaProviderConfig, modelName: string, input: CritiqueInput): Promise<Critique> {
-  const raw = await chat(config, modelName, config.systemPrompt, [
+export function buildCritiquePrompt(input: CritiqueInput): string {
+  const bundleEmpty = !input.evidence || input.evidence.items.length === 0;
+  return [
     "Task: critique the target proposal.",
-    "Return JSON with challengedClaimIds, usefulAgreements, concerns, recommendation, severity (low, medium, or high), and evidenceFindings.",
+    "Return JSON with targetAgentId, challengedClaimIds, usefulAgreements, concerns, recommendation, severity (low, medium, or high), and evidenceFindings.",
+    ...critiqueFieldLines,
+    "targetAgentId is a plain string naming the one seat whose proposal you are critiquing: gpt, claude, or grok.",
+    "Do not omit targetAgentId and do not send it as an object.",
+    "concerns is an array of 1 to 4 plain strings. Each entry is one sentence, not an object.",
+    "usefulAgreements is an array of up to 3 plain strings. Each entry is one sentence, not an object.",
     "Each evidenceFinding has claimId, evidenceId, and relation (supports, contradicts, or unrelated).",
-    "Copy evidenceId from the evidence bundle. If the bundle is empty, return an empty evidenceFindings array and do not set evidenceId to null.",
+    bundleEmpty
+      ? "No evidence bundle is present. Return an empty evidenceFindings array. Do not return finding objects, and do not set evidenceId to null."
+      : "evidenceId is a plain string copied from the evidence bundle. Do not set evidenceId to null.",
+    ...codeLensLines("critique", input.lens),
+    ...(input.lens === "code" ? [
+      "Code review still requires targetAgentId as the plain seat id of the Target proposal, one of gpt, claude, or grok.",
+      bundleEmpty
+        ? "A code critique with no evidence bundle returns evidenceFindings as []. A null evidenceId is not a finding."
+        : "A code critique copies evidenceId from the bundle. A null evidenceId is not a finding."
+    ] : []),
     `Question: ${input.question}`,
     input.context ? `Context: ${input.context}` : "Context: none provided",
     `Target: ${JSON.stringify(input.target)}`,
     `Peers: ${JSON.stringify(input.peers.map((peer) => ({ agentId: peer.agentId, summary: peer.summary })))}`,
     renderEvidenceData(input.evidence),
     "You have no tools and cannot browse."
-  ].join("\n"));
+  ].join("\n");
+}
+
+async function critique(config: OllamaProviderConfig, modelName: string, input: CritiqueInput): Promise<Critique> {
+  const raw = await chat(config, modelName, config.systemPrompt, buildCritiquePrompt(input));
 
   try {
-    const evidenceFindings = resolveEvidenceFindings(raw.evidenceFindings, input.evidence, {
-      seat: config.agentId,
-      model: modelName,
+    return await recoverCritique(config.agentId, modelName, raw, {
+      evidence: input.evidence,
       claims: input.target.claims.map((claim) => ({
         id: claim.id,
         evidenceIds: claim.evidenceIds
-      }))
-    });
-    return critiqueSchema.parse({
-      ...raw,
-      evidenceFindings,
-      agentId: config.agentId,
-      targetAgentId: input.target.agentId
-    });
+      })),
+      targetAgentId: input.target.agentId,
+      question: input.question,
+      onTrace: input.onOutputTrace
+    }, async (request) => chat(config, modelName, config.systemPrompt, request.prompt));
   } catch (error) {
+    if (error instanceof StructuredOutputError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes(`for ${config.agentId} (${modelName})`)) {
       throw error instanceof Error ? error : new Error(message);
@@ -215,11 +225,12 @@ async function critique(config: OllamaProviderConfig, modelName: string, input: 
   }
 }
 
-async function synthesize(config: OllamaProviderConfig, modelName: string, input: SynthesisInput): Promise<Synthesis> {
-  const raw = await chat(config, modelName, config.systemPrompt, [
+export function buildSynthesisPrompt(input: SynthesisInput): string {
+  return [
     "Task: synthesize one verdict.",
     "Dispositions stay accepted, monitor, or rejected. Do not invent another disposition.",
     "A contradicted claim cannot be accepted. Unsupported evidence pushes the claim toward monitor.",
+    ...codeLensLines("synthesis", input.lens),
     "finalAnswer is four labeled lines: Viewpoints:, Agreement Check:, Vote:, Final Decision:.",
     "resolutionTrace items include claimRef and evidenceStatus (supported, contradicted, unsupported, or unchecked).",
     "Include supportingClaims, disagreements, uncertainties, confidenceBand (low, medium, or high), nextActions, resolutionTrace, deliberation, and decisionRationale.",
@@ -230,7 +241,11 @@ async function synthesize(config: OllamaProviderConfig, modelName: string, input
     `Resolution trace: ${JSON.stringify(input.resolutionTrace)}`,
     renderEvidenceData(input.evidence),
     "You have no tools and cannot browse."
-  ].join("\n"));
+  ].join("\n");
+}
+
+async function synthesize(config: OllamaProviderConfig, modelName: string, input: SynthesisInput): Promise<Synthesis> {
+  const raw = await chat(config, modelName, config.systemPrompt, buildSynthesisPrompt(input));
 
   return synthesisSchema.parse(raw);
 }

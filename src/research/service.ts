@@ -11,6 +11,8 @@ import {
 } from "./schemas.js";
 import type { WikipediaClient } from "./wikipedia.js";
 
+export type SeatClaimText = Partial<Record<"gpt" | "claude" | "grok", string>>;
+
 const EMPTY = (query: string): EvidenceBundle => ({
   items: [],
   query,
@@ -28,6 +30,7 @@ export async function gatherForRun(input: {
   wikipedia?: WikipediaClient;
   reddit?: RedditClient;
   scholar?: ScholarClient;
+  claims?: SeatClaimText;
 }): Promise<EvidenceBundle | undefined> {
   if (!researchRequested(input.research)) return undefined;
   return gather(input);
@@ -39,6 +42,7 @@ export async function gather(input: {
   wikipedia?: WikipediaClient;
   reddit?: RedditClient;
   scholar?: ScholarClient;
+  claims?: SeatClaimText;
 }): Promise<EvidenceBundle> {
   try {
     const retrieval = input.mode === "mock"
@@ -47,7 +51,7 @@ export async function gather(input: {
         wikipedia: input.wikipedia,
         reddit: input.reddit,
         scholar: input.scholar
-      });
+      }, input.claims);
     return bundleFromRetrieval(input.query, retrieval);
   } catch {
     return EMPTY(input.query);
@@ -59,11 +63,15 @@ async function loadFixtureEvidence(query: string): Promise<EvidenceRetrieval> {
   return collectEvidenceItems(leads, "fixture", async (lead) => lead.snippet);
 }
 
-async function loadLiveEvidence(query: string, clients: SourceClients): Promise<EvidenceRetrieval> {
+async function loadLiveEvidence(
+  query: string,
+  clients: SourceClients,
+  claims?: SeatClaimText
+): Promise<EvidenceRetrieval> {
   const [wikipedia, reddit, scholar] = await Promise.all([
-    settleRetrieval(() => loadSeatEvidence("gpt", query, clients)),
-    settleRetrieval(() => loadSeatEvidence("grok", query, clients)),
-    settleRetrieval(() => loadSeatEvidence("claude", query, clients))
+    settleRetrieval(() => loadSeatEvidence("gpt", query, clients, claims?.gpt)),
+    settleRetrieval(() => loadSeatEvidence("grok", query, clients, claims?.grok)),
+    settleRetrieval(() => loadSeatEvidence("claude", query, clients, claims?.claude))
   ]);
   return {
     items: [...wikipedia.items, ...reddit.items, ...scholar.items],
@@ -71,10 +79,16 @@ async function loadLiveEvidence(query: string, clients: SourceClients): Promise<
   };
 }
 
-async function loadSeatEvidence(seat: "gpt" | "claude" | "grok", query: string, clients: SourceClients): Promise<EvidenceRetrieval> {
+async function loadSeatEvidence(
+  seat: "gpt" | "claude" | "grok",
+  query: string,
+  clients: SourceClients,
+  claim?: string
+): Promise<EvidenceRetrieval> {
   const adapter = sourceAdapterFor(seat);
   if (!adapter) return { items: [], failed: 0 };
-  return adapter.retrieve(query, clients);
+  const text = claim?.trim();
+  return adapter.retrieve(query, clients, text || undefined);
 }
 
 async function settleRetrieval(run: () => Promise<EvidenceRetrieval>): Promise<EvidenceRetrieval> {

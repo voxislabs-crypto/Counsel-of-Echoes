@@ -56,8 +56,10 @@ test("zero claims can be repaired with two model-supplied claims", async () => {
   let calls = 0;
   const proposal = await resolveOllamaProposal("grok", "qwen2.5:7b", rawProposal([]), async (request) => {
     calls += 1;
-    assert.equal(request.missing, 2);
-    assert.deepEqual(request.existingClaims, []);
+    assert.ok(request.fields.some((field) => field.path === "claims" || field.path.startsWith("claims.")));
+    assert.deepEqual(request.preserved.claims, []);
+    assert.match(request.prompt, /exactly 2 new claim/);
+    assert.match(request.prompt, /Do not invent extra claims to pad the list/);
     return {
       claims: [
         claim("Pineapple on pizza is a preference, not a culinary rule."),
@@ -79,8 +81,10 @@ test("one valid claim is preserved and the repair adds only the missing claim", 
     claim("Pineapple on pizza is a preference, not a culinary rule.")
   ]), async (request) => {
     calls += 1;
-    assert.equal(request.missing, 1);
-    assert.equal(request.existingClaims.length, 1);
+    const kept = request.preserved.claims as { statement?: string }[];
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0]?.statement, "Pineapple on pizza is a preference, not a culinary rule.");
+    assert.match(request.prompt, /exactly 1 new claim/);
     return {
       claims: [claim("The evidence here is personal taste, so the answer stays uncertain.")]
     };

@@ -1,3 +1,5 @@
+import { FAILED_COPY, initialSeatCard, reduceSeatCard, WAITING_COPY } from "./seatState.js";
+
 const state = {
   runId: null,
   socket: null,
@@ -15,6 +17,9 @@ const verdictBody = document.querySelector("#verdict-body");
 const verdictMeta = document.querySelector("#verdict-meta");
 const runForm = document.querySelector("#run-form");
 const submitButton = document.querySelector("#submit-button");
+const lensCode = document.querySelector("#lens-code");
+const contextField = document.querySelector("#context");
+const contextPlaceholder = contextField.getAttribute("placeholder");
 
 initialize().catch((error) => {
   console.error(error);
@@ -33,6 +38,12 @@ async function initialize() {
 modeSelect.addEventListener("change", () => {
   syncModeUI();
   renderAgentCards(visibleAgents());
+});
+
+lensCode.addEventListener("change", () => {
+  contextField.placeholder = lensCode.checked
+    ? "Paste the code or persona text the seats should argue about. No file access yet."
+    : contextPlaceholder;
 });
 
 function visibleAgents() {
@@ -56,6 +67,7 @@ runForm.addEventListener("submit", async (event) => {
   const question = String(formData.get("question") ?? "").trim();
   const context = String(formData.get("context") ?? "").trim();
   const mode = String(formData.get("mode") ?? "mock");
+  const lens = lensCode.checked ? "code" : "general";
 
   if (question.length < 10) {
     addEventCard("Validation", "Use a question with at least 10 characters so the council has something real to work with.");
@@ -71,7 +83,7 @@ runForm.addEventListener("submit", async (event) => {
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ question, context, mode })
+    body: JSON.stringify({ question, context, mode, lens })
   });
 
   const body = await response.json();
@@ -119,7 +131,8 @@ function renderAgentCards(agents) {
   agentsElement.innerHTML = "";
 
   for (const agent of agents) {
-    state.agents.set(agent.id, { summary: "Waiting for a proposal..." });
+    const seat = initialSeatCard();
+    state.agents.set(agent.id, seat);
     const card = document.createElement("article");
     card.className = "agent-card";
     card.id = `agent-${agent.id}`;
@@ -133,7 +146,7 @@ function renderAgentCards(agents) {
         </div>
         <div class="agent-badge">${agent.label.slice(0, 2).toUpperCase()}</div>
       </div>
-      <p class="agent-copy" id="agent-copy-${agent.id}">Waiting for a proposal...</p>
+      <p class="agent-copy" id="agent-copy-${agent.id}">${seat.copy}</p>
       <div class="agent-meta" id="agent-meta-${agent.id}">
         <span class="pill">Idle</span>
       </div>
@@ -148,27 +161,29 @@ function handleEvent(event) {
       addEventCard("Route selected", `${event.payload.providers.map((provider) => `${provider.agentId}:${provider.mode}`).join(" | ")}`);
       break;
     case "proposal.started":
-      setAgentActive(event.agentId, true);
-      setAgentMeta(event.agentId, [`${event.payload.providerName}`, `${event.payload.modelName}`, "Thinking"]);
+      applySeatEvent(event.agentId, event);
       addEventCard(`${event.agentId} started`, `Preparing a proposal with ${event.payload.modelName}.`);
       break;
     case "proposal.delta":
       appendAgentCopy(event.agentId, event.payload.delta);
       break;
     case "proposal.completed":
-      setAgentActive(event.agentId, false);
-      setAgentCopy(event.agentId, event.payload.proposal.summary);
-      setAgentMeta(event.agentId, [
-        `Confidence ${Math.round(event.payload.proposal.confidence * 100)}%`,
-        ...event.payload.proposal.claims.slice(0, 2).map((claim) => claim.statement)
-      ]);
+      applySeatEvent(event.agentId, event);
       addEventCard(`${event.agentId} proposed`, event.payload.proposal.summary);
+      break;
+    case "proposal.failed":
+      applySeatEvent(event.agentId, event);
+      addEventCard(`${event.agentId} failed`, event.payload?.message || FAILED_COPY);
       break;
     case "critique.started":
       addEventCard(`${event.agentId} critiques`, `Pressure-testing ${event.payload.targetAgentId}.`);
       break;
     case "critique.completed":
       addEventCard(`${event.agentId} critique`, event.payload.critique.concerns[0]);
+      break;
+    case "critique.failed":
+      applySeatEvent(event.agentId, event);
+      addEventCard(`${event.agentId} critique failed`, event.payload?.message || "Critique failed.");
       break;
     case "synthesis.started":
       verdictTitle.textContent = "Synthesizing verdict";
@@ -227,13 +242,18 @@ function renderVerdict(synthesis) {
   });
 }
 
-function setAgentActive(agentId, isActive) {
+function applySeatEvent(agentId, event) {
+  if (!agentId) return;
+  const current = state.agents.get(agentId) ?? initialSeatCard();
+  const next = reduceSeatCard(current, event);
+  state.agents.set(agentId, next);
   const card = document.querySelector(`#agent-${agentId}`);
-  if (!card) {
-    return;
+  if (card) {
+    card.classList.toggle("active", next.active);
+    card.classList.toggle("failed", next.failed);
   }
-
-  card.classList.toggle("active", isActive);
+  setAgentCopy(agentId, next.copy);
+  setAgentMeta(agentId, next.meta);
 }
 
 function setAgentCopy(agentId, text) {
@@ -246,10 +266,12 @@ function setAgentCopy(agentId, text) {
 function appendAgentCopy(agentId, text) {
   const element = document.querySelector(`#agent-copy-${agentId}`);
   if (element) {
-    if (element.textContent === "Waiting for a proposal...") {
+    if (element.textContent === WAITING_COPY || element.textContent === "Preparing a proposal...") {
       element.textContent = "";
     }
     element.textContent += text;
+    const current = state.agents.get(agentId);
+    if (current) current.copy = element.textContent;
   }
 }
 
@@ -280,11 +302,15 @@ function resetRunState() {
   verdictTitle.textContent = "Awaiting a run";
   verdictBody.innerHTML = "<p>The final synthesis will appear here once the chamber resolves its first pass.</p>";
   verdictMeta.innerHTML = "";
-  document.querySelectorAll(".agent-card").forEach((card) => card.classList.remove("active"));
-  document.querySelectorAll(".agent-copy").forEach((card) => {
-    card.textContent = "Waiting for a proposal...";
-  });
-  document.querySelectorAll("[id^='agent-meta-']").forEach((meta) => {
-    meta.innerHTML = "<span class='pill'>Idle</span>";
-  });
+  for (const agentId of state.agents.keys()) {
+    const next = initialSeatCard();
+    state.agents.set(agentId, next);
+    const card = document.querySelector(`#agent-${agentId}`);
+    if (card) {
+      card.classList.remove("active");
+      card.classList.remove("failed");
+    }
+    setAgentCopy(agentId, next.copy);
+    setAgentMeta(agentId, next.meta);
+  }
 }

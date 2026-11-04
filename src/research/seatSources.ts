@@ -14,7 +14,7 @@ export type SourceClients = {
 export type SeatSourceAdapter = {
   seat: "gpt" | "claude" | "grok";
   sourceKind: SourceKind;
-  retrieve(query: string, clients?: SourceClients): Promise<EvidenceRetrieval>;
+  retrieve(query: string, clients?: SourceClients, claim?: string): Promise<EvidenceRetrieval>;
 };
 
 // The Strategist reads Wikipedia, the Analyst reads Semantic Scholar,
@@ -22,24 +22,24 @@ export type SeatSourceAdapter = {
 export const strategistSource: SeatSourceAdapter = {
   seat: "gpt",
   sourceKind: "wikipedia",
-  retrieve(query, clients) {
-    return loadWikipediaEvidence(query, clients?.wikipedia);
+  retrieve(query, clients, claim) {
+    return loadWikipediaEvidence(query, clients?.wikipedia, claim);
   }
 };
 
 export const analystSource: SeatSourceAdapter = {
   seat: "claude",
   sourceKind: "scholar",
-  retrieve(query, clients) {
-    return loadScholarEvidence({ query, client: clients?.scholar });
+  retrieve(query, clients, claim) {
+    return loadScholarEvidence({ query, claim, client: clients?.scholar });
   }
 };
 
 export const gremlinSource: SeatSourceAdapter = {
   seat: "grok",
   sourceKind: "reddit",
-  retrieve(query, clients) {
-    return loadRedditEvidence({ query, client: clients?.reddit });
+  retrieve(query, clients, claim) {
+    return loadRedditEvidence({ query, claim, client: clients?.reddit });
   }
 };
 

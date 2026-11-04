@@ -1,4 +1,5 @@
 import { collectEvidenceItems, MAX_EVIDENCE_ITEMS, type EvidenceRetrieval } from "./collectEvidence.js";
+import { buildSourceQuery } from "./searchText.js";
 import { safeFetch } from "./safeFetch.js";
 import type { SearchLead } from "./types.js";
 
@@ -29,13 +30,7 @@ export type ScholarClient = {
 };
 
 export function buildScholarSearchText(question: string, claim?: string): string {
-  const asked = question.trim();
-  const extra = claim?.trim() ?? "";
-  const parts = [asked];
-  if (extra && extra.toLowerCase() !== asked.toLowerCase()) {
-    parts.push(extra);
-  }
-  return parts.filter(Boolean).join(" ").slice(0, 300);
+  return buildSourceQuery(question, claim);
 }
 
 // Analyst retrieval. A failed or rate-limited Semantic Scholar call returns no items.

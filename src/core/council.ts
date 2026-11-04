@@ -1,16 +1,19 @@
 import type { AgentId } from "./agents.js";
 import {
   runRequestSchema,
+  type Proposal,
   type RunRequest,
   type RunRecord,
   type Synthesis
 } from "./schemas.js";
 import { buildHeuristicJudgeSynthesis, buildResolutionTrace } from "./judge.js";
 import { settleSeatTasks } from "./proposalStage.js";
+import { outputFailurePayload, type OutputTrace } from "../providers/outputRecovery.js";
 import type { CouncilProvider, ProviderMode } from "../providers/types.js";
 import { createProviders, type RuntimeConfig } from "../providers/index.js";
 import { RunStore } from "../store/runStore.js";
-import { gatherForRun, researchRequested, stripUnknownEvidenceIds, stripUnknownFindings } from "../research/service.js";
+import { gatherForRun, researchRequested, stripUnknownEvidenceIds, stripUnknownFindings, type SeatClaimText } from "../research/service.js";
+import { seatClaimText } from "../research/searchText.js";
 import type { EvidenceBundle } from "../research/schemas.js";
 import {
   createVoxisContextClient,
@@ -98,7 +101,6 @@ export class CouncilService {
         }
       });
 
-      const evidence = await this.gatherEvidence(runId, request, mode);
       let unknownEvidenceIdsStripped = 0;
       const topic = [request.question, request.context].filter(Boolean).join("\n");
       const voxisContexts = await loadSeatContexts(
@@ -139,14 +141,33 @@ export class CouncilService {
               }
             });
 
-            const proposed = await provider.propose({
-              question: request.question,
-              context: request.context,
-              peers: providers.map((candidate) => candidate.agentId).filter((agentId) => agentId !== provider.agentId),
-              evidence,
-              voxisContext
-            });
-            const sanitized = stripUnknownEvidenceIds(proposed.claims, evidence);
+            let outputTrace: OutputTrace | undefined;
+            let proposed;
+            try {
+              proposed = await provider.propose({
+                question: request.question,
+                context: request.context,
+                peers: providers.map((candidate) => candidate.agentId).filter((agentId) => agentId !== provider.agentId),
+                voxisContext,
+                lens: request.lens,
+                onOutputTrace: (trace) => {
+                  outputTrace = trace;
+                }
+              });
+            } catch (error) {
+              const failure = outputFailurePayload(error);
+              await this.store.appendEvent(runId, {
+                runId,
+                type: "proposal.failed",
+                agentId: provider.agentId,
+                payload: {
+                  message: failure.message,
+                  ...(failure.outputTrace ? { outputTrace: failure.outputTrace } : {})
+                }
+              });
+              throw error;
+            }
+            const sanitized = stripUnknownEvidenceIds(proposed.claims, undefined);
             unknownEvidenceIdsStripped += sanitized.stripped;
             const proposal = {
               ...proposed,
@@ -160,6 +181,7 @@ export class CouncilService {
               agentId: provider.agentId,
               payload: {
                 proposal,
+                ...(outputTrace ? { outputTrace } : {}),
                 unknownEvidenceIdsStripped: sanitized.stripped
               }
             });
@@ -170,6 +192,8 @@ export class CouncilService {
         "Proposal stage",
         { sequential: mode === "ollama" }
       );
+
+      const evidence = await this.gatherEvidence(runId, request, mode, proposals);
 
       const critiques = await settleSeatTasks(
         providers.map((provider, index) => ({
@@ -186,13 +210,33 @@ export class CouncilService {
               }
             });
 
-            const drafted = await provider.critique({
-              question: request.question,
-              context: request.context,
-              target,
-              peers: proposals.filter((proposal) => proposal.agentId !== provider.agentId),
-              evidence
-            });
+            let outputTrace: OutputTrace | undefined;
+            let drafted;
+            try {
+              drafted = await provider.critique({
+                question: request.question,
+                context: request.context,
+                target,
+                peers: proposals.filter((proposal) => proposal.agentId !== provider.agentId),
+                evidence,
+                lens: request.lens,
+                onOutputTrace: (trace) => {
+                  outputTrace = trace;
+                }
+              });
+            } catch (error) {
+              const failure = outputFailurePayload(error);
+              await this.store.appendEvent(runId, {
+                runId,
+                type: "critique.failed",
+                agentId: provider.agentId,
+                payload: {
+                  message: failure.message,
+                  ...(failure.outputTrace ? { outputTrace: failure.outputTrace } : {})
+                }
+              });
+              throw error;
+            }
             const sanitizedFindings = stripUnknownFindings(drafted.evidenceFindings, evidence);
             unknownEvidenceIdsStripped += sanitizedFindings.stripped;
             const critique = {
@@ -206,6 +250,7 @@ export class CouncilService {
               agentId: provider.agentId,
               payload: {
                 critique,
+                ...(outputTrace ? { outputTrace } : {}),
                 unknownEvidenceIdsStripped: sanitizedFindings.stripped
               }
             });
@@ -237,7 +282,8 @@ export class CouncilService {
           proposals,
           critiques,
           resolutionTrace,
-          evidence
+          evidence,
+          lens: request.lens
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Judge synthesis failed";
@@ -296,23 +342,31 @@ export class CouncilService {
     }
   }
 
-  private async gatherEvidence(runId: string, request: RunRequest, mode: ProviderMode): Promise<EvidenceBundle | undefined> {
+  private async gatherEvidence(
+    runId: string,
+    request: RunRequest,
+    mode: ProviderMode,
+    proposals: Proposal[]
+  ): Promise<EvidenceBundle | undefined> {
     if (!researchRequested(request.research)) {
       return undefined;
     }
 
+    const claims = claimTextBySeat(proposals);
     await this.store.appendEvent(runId, {
       runId,
       type: "research.started",
       payload: {
-        query: request.question
+        query: request.question,
+        claimSeats: Object.keys(claims)
       }
     });
 
     const evidence = await gatherForRun({
       research: true,
       query: request.question,
-      mode
+      mode,
+      claims
     });
     if (!evidence) {
       return undefined;
@@ -362,6 +416,16 @@ export class CouncilService {
       await wait(40);
     }
   }
+}
+
+function claimTextBySeat(proposals: Proposal[]): SeatClaimText {
+  const claims: SeatClaimText = {};
+  for (const seat of ["gpt", "claude", "grok"] as const) {
+    const proposal = proposals.find((item) => item.agentId === seat);
+    const text = seatClaimText(proposal?.claims.map((claim) => claim.statement) ?? []);
+    if (text) claims[seat] = text;
+  }
+  return claims;
 }
 
 function resolveRunMode(providers: CouncilProvider[]): ProviderMode {

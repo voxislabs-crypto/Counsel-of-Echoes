@@ -158,7 +158,8 @@ test("evidence assembly failure preserves completed proposals and critiques", as
       question: "Should a local council prefer reliability?",
       context: "",
       mode: "ollama",
-      research: false
+      research: false,
+      lens: "general"
     });
     const proposals = [
       storedProposal("gpt", "llama3.1:8b"),

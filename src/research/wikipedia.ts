@@ -1,4 +1,5 @@
 import { collectEvidenceItems, type EvidenceRetrieval } from "./collectEvidence.js";
+import { buildSourceQuery } from "./searchText.js";
 import { htmlToText, safeFetch } from "./safeFetch.js";
 import type { SearchLead, SearchProvider } from "./types.js";
 
@@ -71,11 +72,15 @@ export async function fetchWikipediaExcerpt(title: string): Promise<string> {
 
 // Strategist retrieval. Uses the Wikipedia client above. A failed search
 // returns no items so a down API does not fail the council run.
-export async function loadWikipediaEvidence(query: string, client?: WikipediaClient): Promise<EvidenceRetrieval> {
+export async function loadWikipediaEvidence(
+  query: string,
+  client?: WikipediaClient,
+  claim?: string
+): Promise<EvidenceRetrieval> {
   try {
     const search = client?.search ?? ((value: string) => wikipediaSearch.search(value));
     const excerpt = client?.excerpt ?? fetchWikipediaExcerpt;
-    const leads = await search(query);
+    const leads = await search(buildSourceQuery(query, claim));
     return collectEvidenceItems(leads, "wikipedia", (lead) => excerpt(lead.title), client?.now);
   } catch {
     return { items: [], failed: 0 };

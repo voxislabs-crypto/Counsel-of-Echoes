@@ -1,4 +1,5 @@
 import { collectEvidenceItems, MAX_EVIDENCE_ITEMS, type EvidenceRetrieval } from "./collectEvidence.js";
+import { buildSourceQuery } from "./searchText.js";
 import { safeFetch } from "./safeFetch.js";
 import type { SearchLead } from "./types.js";
 
@@ -60,13 +61,7 @@ export function normalizeSubreddits(values?: string[]): string[] {
 }
 
 export function buildRedditSearchText(question: string, claim?: string): string {
-  const asked = question.trim();
-  const extra = claim?.trim() ?? "";
-  const parts = [asked];
-  if (extra && extra.toLowerCase() !== asked.toLowerCase()) {
-    parts.push(extra);
-  }
-  return parts.filter(Boolean).join(" ").slice(0, 300);
+  return buildSourceQuery(question, claim);
 }
 
 // Chaos Gremlin retrieval. A failed or rate-limited Reddit call returns no items.
