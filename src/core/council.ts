@@ -22,6 +22,12 @@ import {
   type VoxisContextClient
 } from "../providers/voxisContext.js";
 
+function contextForSeat(request: RunRequest, agentId: string): string {
+  const overlay = request.seatContexts?.[agentId];
+  if (typeof overlay === "string" && overlay.length > 0) return overlay;
+  return request.context;
+}
+
 export class CouncilService {
   private readonly voxis: VoxisContextClient;
 
@@ -146,7 +152,7 @@ export class CouncilService {
             try {
               proposed = await provider.propose({
                 question: request.question,
-                context: request.context,
+                context: contextForSeat(request, provider.agentId),
                 peers: providers.map((candidate) => candidate.agentId).filter((agentId) => agentId !== provider.agentId),
                 voxisContext,
                 lens: request.lens,
@@ -215,7 +221,7 @@ export class CouncilService {
             try {
               drafted = await provider.critique({
                 question: request.question,
-                context: request.context,
+                context: contextForSeat(request, provider.agentId),
                 target,
                 peers: proposals.filter((proposal) => proposal.agentId !== provider.agentId),
                 evidence,

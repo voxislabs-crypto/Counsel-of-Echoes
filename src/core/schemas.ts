@@ -106,6 +106,7 @@ export const synthesisSchema = z.object({
 export const runRequestSchema = z.object({
   question: z.string().min(10).max(4000),
   context: z.string().max(12000).optional().default(""),
+  seatContexts: z.record(z.string(), z.string().max(4000)).optional(),
   mode: z.enum(["mock", "live", "ollama"]).optional(),
   research: z.boolean().optional().default(false),
   lens: z.enum(["general", "code"]).optional().default("general")
