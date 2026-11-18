@@ -226,7 +226,20 @@ export class LiveProvider implements CouncilProvider {
     return synthesisSchema.parse(raw);
   }
 
+  async respond(prompt: string): Promise<string> {
+    const system = [
+      `You are seat ${this.agentId}.`,
+      "Return one JSON object matching the seat-finding contract in the user message.",
+      "Do not return a proposal, critique, or synthesis."
+    ].join(" ");
+    return this.requestContent(system, prompt);
+  }
+
   private async requestJson(system: string, user: string): Promise<Record<string, unknown>> {
+    return parseJsonObject(await this.requestContent(system, user));
+  }
+
+  private async requestContent(system: string, user: string): Promise<string> {
     switch (this.config.kind) {
       case "openai":
       case "xai":
@@ -271,7 +284,7 @@ export class LiveProvider implements CouncilProvider {
       throw new Error(`${this.config.kind} returned an empty response`);
     }
 
-    return parseJsonObject(content);
+    return content;
   }
 
   private async requestAnthropic(system: string, user: string) {
@@ -309,7 +322,7 @@ export class LiveProvider implements CouncilProvider {
       throw new Error("anthropic returned an empty response");
     }
 
-    return parseJsonObject(content);
+    return content;
   }
 }
 

@@ -6,12 +6,18 @@ import {
   reviewVerdictSchema,
   type ReviewVerdict
 } from "../contracts/schemas.js";
+import {
+  REVIEW_SEAT_IDS,
+  buildSeatFindingPrompt,
+  readSeatFinding,
+  type ReviewSeatId
+} from "./seatFinding.js";
 import { failedCouncilReview } from "./verdict.js";
 
-const REQUIRED_SEATS = ["gpt", "claude", "grok"] as const;
-export type ReviewSeatId = (typeof REQUIRED_SEATS)[number];
+export type { ReviewSeatId };
+export { buildSeatFindingPrompt };
 
-const findingFence = /```seat-finding\s*([\s\S]*?)```/i;
+const REQUIRED_SEATS = REVIEW_SEAT_IDS;
 
 export type SeatFinding = {
   seat_id: ReviewSeatId;
@@ -19,6 +25,8 @@ export type SeatFinding = {
   files_cited: string[];
   corrections: string[];
   note: string;
+  risks: string[];
+  assumptions: string[];
 };
 
 type ChamberProvider = {
@@ -71,69 +79,62 @@ export async function reviewDiff(input: {
     );
   }
 
-  const findings: SeatFinding[] = [];
+  const outcomes: Array<{ seatId: ReviewSeatId; finding: SeatFinding | null; failure: string | null }> = [];
   for (const seatId of REQUIRED_SEATS) {
-    let finding: SeatFinding | null;
+    let finding: SeatFinding | null = null;
+    let failure: string | null = null;
     try {
       finding = await input.examine(seatId, diff);
     } catch {
+      failure = `${seatId}: the examiner failed before a finding was returned.`;
       finding = null;
     }
-    if (!finding || finding.seat_id !== seatId || !findingIsValid(finding, diffFiles)) {
-      return failedCouncilReview(
-        input.packet,
-        input.report,
-        `Council review was requested and ${seatId} did not return a finding that cites the diff.`
-      );
+    if (!failure && (!finding || finding.seat_id !== seatId || !findingIsValid(finding, diffFiles))) {
+      failure = `${seatId}: did not return a finding that cites the diff.`;
+      finding = null;
     }
-    findings.push(finding);
+    outcomes.push({ seatId, finding, failure });
   }
-  return verdictFromFindings(input.packet, report.task_id, report.attempt_ids[0] ?? "", findings);
+  if (outcomes.some((outcome) => outcome.failure)) {
+    return failedCouncilReview(
+      input.packet,
+      input.report,
+      "Council review was requested and one or more seats did not return a finding that cites the diff.",
+      outcomes.map((outcome) => outcome.failure ?? `${outcome.seatId}: parsed ${outcome.finding?.status} citing ${outcome.finding?.files_cited.join(", ")}. Not a chamber verdict.`)
+    );
+  }
+  return verdictFromFindings(
+    input.packet,
+    report.task_id,
+    report.attempt_ids[0] ?? "",
+    outcomes.map((outcome) => outcome.finding as SeatFinding)
+  );
 }
 
 export async function examineWithProvider(provider: CouncilProvider, diff: string): Promise<SeatFinding | null> {
   if (!REQUIRED_SEATS.includes(provider.agentId as ReviewSeatId)) return null;
   try {
-    const proposal = await provider.propose({
-      question: "Review the execution diff and return one seat-finding for the files it names.",
-      context: diff.slice(0, 6000),
-      peers: [],
-      lens: "code"
-    });
-    const text = [
-      proposal.summary,
-      ...proposal.claims.map((claim) => claim.statement),
-      ...proposal.risks
-    ].join("\n");
-    return parseSeatFinding(provider.agentId as ReviewSeatId, text, diff);
+    const seatId = provider.agentId as ReviewSeatId;
+    const text = await provider.respond(buildSeatFindingPrompt(seatId, diff.slice(0, 6000)));
+    return parseSeatFinding(seatId, text, diff);
   } catch {
     return null;
   }
 }
 
 export function parseSeatFinding(seatId: ReviewSeatId, text: string, diff: string): SeatFinding | null {
-  const match = text.match(findingFence);
-  if (!match) return null;
-  try {
-    const parsed = JSON.parse(match[1]) as {
-      status?: unknown;
-      files_cited?: unknown;
-      corrections?: unknown;
-      note?: unknown;
-    };
-    const finding: SeatFinding = {
-      seat_id: seatId,
-      status: parsed.status === "approve" || parsed.status === "changes_requested" || parsed.status === "blocked"
-        ? parsed.status
-        : "blocked",
-      files_cited: stringList(parsed.files_cited),
-      corrections: stringList(parsed.corrections),
-      note: typeof parsed.note === "string" ? parsed.note : ""
-    };
-    return findingIsValid(finding, filesInDiff(diff)) ? finding : null;
-  } catch {
-    return null;
-  }
+  const draft = readSeatFinding(seatId, text);
+  if (!draft) return null;
+  const finding: SeatFinding = {
+    seat_id: draft.seat_id,
+    status: draft.status,
+    files_cited: draft.files_cited,
+    corrections: draft.corrections,
+    note: draft.summary.slice(0, 500),
+    risks: draft.risks,
+    assumptions: draft.assumptions
+  };
+  return findingIsValid(finding, filesInDiff(diff)) ? finding : null;
 }
 
 function verdictFromFindings(
@@ -165,7 +166,7 @@ function verdictFromFindings(
     status,
     compliance_notes: [
       "Three seats examined the diff excerpt. This is a Council review of that diff. It does not authorize promotion.",
-      ...findings.map((finding) => `${finding.seat_id}: ${finding.note || finding.status}. Cited ${finding.files_cited.join(", ")}.`)
+      ...findings.map((finding) => describeFinding(finding))
     ],
     missing_requirements: [],
     requested_corrections: corrections,
@@ -174,15 +175,16 @@ function verdictFromFindings(
   });
 }
 
+function describeFinding(finding: SeatFinding): string {
+  const risks = finding.risks.length > 0 ? ` Risks: ${finding.risks.join("; ")}.` : "";
+  const assumptions = finding.assumptions.length > 0 ? ` Assumptions: ${finding.assumptions.join("; ")}.` : "";
+  return `${finding.seat_id}: ${finding.note || finding.status}. Cited ${finding.files_cited.join(", ")}.${risks}${assumptions}`;
+}
+
 function findingIsValid(finding: SeatFinding, diffFiles: string[]): boolean {
   if (finding.files_cited.length === 0) return false;
   const known = new Set(diffFiles.map(normalize));
   return finding.files_cited.every((file) => known.has(normalize(file)));
-}
-
-function stringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function normalize(file: string): string {

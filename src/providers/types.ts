@@ -44,4 +44,7 @@ export interface CouncilProvider {
   propose(input: ProposalInput): Promise<Proposal>;
   critique(input: CritiqueInput): Promise<Critique>;
   synthesize(input: SynthesisInput): Promise<Synthesis>;
+  // Raw text for a caller-supplied contract. Diff review parses this itself.
+  // Proposal recovery must not run on it.
+  respond(prompt: string): Promise<string>;
 }

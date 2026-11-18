@@ -81,6 +81,10 @@ export class MockProvider implements CouncilProvider {
       input.evidence
     );
   }
+
+  async respond(): Promise<string> {
+    return "Mock seats do not produce Council seat findings.";
+  }
 }
 
 function summarizeQuestion(question: string): string {

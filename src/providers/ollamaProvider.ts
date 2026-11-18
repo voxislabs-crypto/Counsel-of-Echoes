@@ -52,8 +52,33 @@ export function createOllamaProvider(config: OllamaProviderConfig): CouncilProvi
     mode: "ollama",
     propose: (input) => propose(config, modelName, input),
     critique: (input) => critique(config, modelName, input),
-    synthesize: (input) => synthesize(config, modelName, input)
+    synthesize: (input) => synthesize(config, modelName, input),
+    respond: (prompt) => respondWithContract(config, modelName, prompt)
   };
+}
+
+async function respondWithContract(
+  config: OllamaProviderConfig,
+  modelName: string,
+  prompt: string
+): Promise<string> {
+  const endpoint = `${config.baseUrl.replace(/\/$/, "")}/api/chat`;
+  return requestOllamaChat(endpoint, {
+    model: modelName,
+    stream: false,
+    format: "json",
+    messages: [
+      {
+        role: "system",
+        content: `You are seat ${config.agentId}. Return one JSON object matching the seat-finding contract in the user message. Do not return a proposal, critique, or synthesis.`
+      },
+      { role: "user", content: prompt }
+    ],
+    options: {
+      temperature: 0.4,
+      num_ctx: OLLAMA_NUM_CTX
+    }
+  });
 }
 
 async function propose(config: OllamaProviderConfig, modelName: string, input: ProposalInput): Promise<Proposal> {

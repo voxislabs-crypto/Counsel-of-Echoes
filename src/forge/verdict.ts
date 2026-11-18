@@ -35,7 +35,12 @@ export function mockReview(packetInput: unknown, reportInput: unknown): ReviewVe
   });
 }
 
-export function failedCouncilReview(packetInput: unknown, reportInput: unknown, reason: string): ReviewVerdict {
+export function failedCouncilReview(
+  packetInput: unknown,
+  reportInput: unknown,
+  reason: string,
+  details: string[] = []
+): ReviewVerdict {
   const packet = implementationPacketSchema.parse(packetInput);
   const report = executionReportSchema.parse(reportInput);
   assertSameIdentity(packet, report);
@@ -48,7 +53,7 @@ export function failedCouncilReview(packetInput: unknown, reportInput: unknown, 
     attempt_id: report.attempt_ids[0] ?? "",
     review_mode: "council_review_failed",
     status: "blocked",
-    compliance_notes: [reason],
+    compliance_notes: [reason, ...details.filter((detail) => detail.trim().length > 0)],
     missing_requirements: [],
     requested_corrections: [],
     disagreements: packet.disagreements,
